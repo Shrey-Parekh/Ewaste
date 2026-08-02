@@ -1,0 +1,78 @@
+########################################
+# E-Waste Detection Project - .gitignore
+########################################
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# ---- Virtual environments ----
+venv/
+env/
+ENV/
+.venv/
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+
+# ---- IDE / editor ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- OS junk ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+########################################
+# Project data - DO NOT COMMIT
+# These folders hold raw photos, generated
+# synthetic images, and cut-outs. They are
+# large, binary, and easy to regenerate from
+# the scripts - git is the wrong place for them.
+########################################
+raw/
+cutouts/
+dataset/
+real_test/
+
+# if you want to keep the folder structure visible in the repo,
+# create empty raw/ewaste/.gitkeep, raw/organic/.gitkeep, etc.
+# and un-ignore just those with the lines below:
+# !raw/**/.gitkeep
+# !cutouts/**/.gitkeep
+
+########################################
+# YOLO / Ultralytics training outputs
+# These include model weights (100MB+ each),
+# hundreds of result images, and logs per run.
+########################################
+runs/
+*.pt
+*.onnx
+*.engine
+*.torchscript
+*.pb
+*.tflite
+wandb/
+
+########################################
+# Misc large / generated files
+########################################
+*.zip
+*.tar
+*.tar.gz
+*.log
+*.csv.bak
+
+# model cache used by rembg (background removal models, ~100-200MB each)
+.u2net/
