@@ -1,0 +1,58 @@
+
+==========================================================================
+REAL-IMAGE EVALUATION  (object pool = 60)
+==========================================================================
+  held-out organic images (no e-waste present): 747
+  held-out e-waste images (e-waste present)   : 400
+  no object, occluder or background in the training data came from
+  either set.
+
+   conf |   FP rate   FP/img |  detect rate |     F1
+--------+---------------------+----------------+--------
+   0.10 |     0.273     0.39 |        0.895 |  0.744
+   0.20 |     0.155     0.18 |        0.858 |  0.799
+   0.25 |     0.124     0.14 |        0.835 |  0.808  <--
+   0.30 |     0.104     0.11 |        0.807 |  0.806
+   0.40 |     0.074     0.07 |        0.743 |  0.790
+   0.50 |     0.036     0.04 |        0.672 |  0.773
+   0.60 |     0.023     0.02 |        0.583 |  0.717
+   0.70 |     0.011     0.01 |        0.472 |  0.633
+   0.80 |     0.004     0.00 |        0.315 |  0.476
+
+  FP rate     = fraction of held-out organic images with >=1 false alarm
+  detect rate = fraction of held-out e-waste photos with >=1 detection
+  F1          = image-level, treating each organic image as a negative
+                case and each e-waste image as a positive case
+
+--------------------------------------------------------------------------
+OPERATING POINTS
+--------------------------------------------------------------------------
+  Synthetic optimum, confidence 0.306 (F1 0.767 on synthetic data)
+    carried onto real data at 0.305: detection 80.0%, FP 10.2%, F1 0.804
+  Real optimum, confidence 0.275  (fine search, step 0.005)
+    detection 82.5% (330 of 400)   95% CI [78.5%, 85.9%]
+    false alarms 11.0% (82 of 747)   95% CI [8.9%, 13.4%]
+    F1 0.813
+
+  Intervals are Wilson score, 95%. A difference between two models
+  smaller than these intervals is not resolvable from one run each.
+
+  Report DETECTION RATE and FALSE ALARM RATE as the primary numbers.
+  Precision and F1 additionally depend on the 400:747 positive-to-
+  negative ratio of this test set, which is an artefact of how the
+  split was drawn rather than a real-world prevalence.
+
+  LIMITATION: this measures specificity on real organic waste and
+  detection on real isolated e-waste. It does NOT measure the true-
+  positive rate on real CONTAMINATED waste, because no such imagery
+  exists.
+
+  LIMITATION: detection rate counts an e-waste photograph as detected
+  when the model fires ANYWHERE in the frame. ewaste_test carries no
+  ground-truth boxes, so a detection landing on background still
+  counts. Treat the figure as an upper bound, and describe it as the
+  model firing on the image rather than localising the object.
+==========================================================================
+
+Saved up to 12 worst false positives at conf 0.28
+(82 held-out organic images fired) -> eval_pool60_ednets/false_positives
