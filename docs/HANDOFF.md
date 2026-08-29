@@ -33,6 +33,64 @@ evaluated on **real, unedited photographs**.
 - No leftover debug code, temp files, unused imports, or partial changes.
 - Commit accurately, with a message reflecting what was actually done.
 
+### Journal requirements — Elsevier *Waste Management* (ISSN 0956-053X)
+- `\documentclass[final,5p,times,twocolumn,authoryear]{elsarticle}` —
+  **author–date** citations, not the numbered style.
+- Abstract **≤250 words**, no references, no uncommon abbreviations.
+  Currently 247.
+- Highlights: **3–5 bullets, each ≤85 characters including spaces**.
+  `Manuscripts/highlights.tex` carries per-bullet counts as comments; they were
+  checked programmatically and must be re-checked after any edit.
+- Research data: Option C, which requires a deposited DOI. The old deposit was
+  deleted; a new one is needed and the DOI placeholder is still unfilled.
+- AI-use declaration: keep it generic. State that AI assisted with drafting the
+  manuscript and with debugging the pipeline. **Do not name the tool.**
+
+### Corrections already received — do not repeat these
+1. **The realism corrections are not decoration.** Shadow, colour
+   harmonisation, blur and grain matching exist to make the object *harder* to
+   find, as it would be in reality. Composited without them, an object carries
+   a photometric seam and a detector can score well by finding the seam rather
+   than the object. Never describe them as cosmetic.
+2. **Cut-outs are composited into real organic waste**, partly buried under
+   organic clutter — not pasted onto clean or plain backgrounds.
+3. **When fixing an inconsistency, soften it — do not delete the section.**
+   Removing whole sections was an over-correction; the proportionate response
+   is to qualify the claim.
+4. **Do not shade or downplay a limitation to make it read better.** State it
+   plainly and briefly.
+
+### Conventions to hold to
+- **Statistics.** Wilson score intervals for proportions (better than the
+  normal approximation near 0 and 1). McNemar's exact test for a *paired*
+  comparison of two detectors on the same images.
+- **Noise floor.** Across seeds with everything else fixed, detection spanned
+  roughly 4 points. Treat any difference under ~4 points at one seed per model
+  as unresolvable, and say so rather than ranking.
+- **Primary metrics are detection rate and false-alarm rate.** Precision and
+  F1 additionally depend on the 400:747 positive-to-negative ratio, which is an
+  artefact of how the split was drawn, not a real-world prevalence.
+- **Figure colours.** Green = ground truth, red = false positive, the detection
+  literature convention — kept deliberately in the photo montages.
+- **Palette** (accessibility-checked, 3.38:1 WCAG, 2.63:1 protanopia):
+  `verdigris #1F3B33`, `verdifill #DCE8E2`, `clay #B07C52`,
+  `clayfill #F2E2D2`, `inkslate #2B3A34`. A previous palette failed contrast
+  at 1.42:1 and had to be replaced — re-check before changing these.
+- **Figure filenames match their rendered figure numbers.** Keep that.
+
+### How to work on this safely
+- **Verify before claiming.** Run the check, read the output, then report. Do
+  not state a metric, a file's contents or a fix's success from recollection.
+- **Back up before any destructive rewrite.** A 1240-line manuscript was once
+  rewritten across four scripts with no `.bak` and had to be reconstructed
+  rather than restored. `Manuscripts/` is now tracked, so commit first.
+- **Read a file before overwriting it.**
+- **Do not pipe a backgrounded long-running command.** See §9.
+- **Check the GPU is free before launching training.** See §9.
+- **Say when something failed.** If a run crashes, a metric is unavailable or a
+  step was skipped, report it with the output rather than working around it
+  silently.
+
 ---
 
 ## 2. Pipeline (current, post-rename)
