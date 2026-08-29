@@ -36,7 +36,7 @@ from pathlib import Path
 import argparse
 import csv
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from pipeline_common import load_image
 
@@ -45,6 +45,11 @@ SPLITS = ROOT / "splits"
 OUT = ROOT / "annotations" / "ewaste_test"
 
 MIN_BOX_PX = 4
+# 74 of the 400 test photographs are under 400 px on the longest edge and the
+# smallest is 189 px. Shown at their own size they are too small to place a box
+# on accurately, which would put avoidable error straight into the mIoU this
+# annotation exists to measure, so small images are enlarged to fill the window.
+MAX_ZOOM = 4.0
 BOX_COLOUR = "#00FF00"
 LIVE_COLOUR = "#FFCC00"
 
@@ -150,8 +155,9 @@ class Annotator:
         path = self.paths[self.i]
         self.image = load_image(path)
         w, h = self.image.size
-        self.scale = min(self.maxw / w, self.maxh / h, 1.0)
-        disp = self.image.resize((int(w * self.scale), int(h * self.scale)))
+        self.scale = min(self.maxw / w, self.maxh / h, MAX_ZOOM)
+        disp = self.image.resize((int(w * self.scale), int(h * self.scale)),
+                                 Image.LANCZOS)
         self.photo = ImageTk.PhotoImage(disp)
         self.canvas.config(width=disp.width, height=disp.height)
         self.boxes = load_boxes(path, self.image.size)
