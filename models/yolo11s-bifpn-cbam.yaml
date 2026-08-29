@@ -1,0 +1,73 @@
+# YOLO11s + BiFPN + CBAM
+#
+# Stock YOLO11s backbone with the PANet neck replaced outright by one BiFPN
+# block, then CBAM on each level entering the detection head. Replacing the
+# neck rather than bolting a fusion stage on top is what makes "BiFPN" an
+# accurate description of the model; the cost is that the neck trains from
+# scratch while the backbone still inherits COCO weights.
+#
+# The scales block is the identity so every channel count and repeat below is
+# literal, already resolved to what the 's' multiplier produces. Writing them
+# out avoids the trap that the parser scales the arguments of stock modules
+# such as Conv and C3k2 but passes those of CBAM, BiFPNFuse and Index through
+# untouched, which would otherwise leave two conventions in one file. The
+# scale letter is kept in the filename so the parser still resolves 's' and
+# leaves C3k2 in its small-model configuration.
+#
+# Neck width matches the two ResNet configurations.
+
+nc: 1
+
+scales:
+  # [depth, width, max_channels]
+  s: [1.0, 1.0, 1024]
+
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [32, 3, 2]] # 0-P1/2
+  - [-1, 1, Conv, [64, 3, 2]] # 1-P2/4
+  - [-1, 1, C3k2, [128, False, 0.25]] # 2
+  - [-1, 1, Conv, [128, 3, 2]] # 3-P3/8
+  - [-1, 1, C3k2, [256, False, 0.25]] # 4
+  - [-1, 1, Conv, [256, 3, 2]] # 5-P4/16
+  - [-1, 1, C3k2, [256, True]] # 6
+  - [-1, 1, Conv, [512, 3, 2]] # 7-P5/32
+  - [-1, 1, C3k2, [512, True]] # 8
+  - [-1, 1, SPPF, [512, 5]] # 9
+  - [-1, 1, C2PSA, [512]] # 10
+
+head:
+  # lateral 1x1 projections to the common neck width
+  - [4, 1, Conv, [128, 1, 1]] # 11-P3 in
+  - [6, 1, Conv, [128, 1, 1]] # 12-P4 in
+  - [10, 1, Conv, [128, 1, 1]] # 13-P5 in
+
+  # top-down: P4td = fuse(P4in, up(P5in))
+  - [13, 1, nn.Upsample, [None, 2, "nearest"]] # 14
+  - [[12, 14], 1, Concat, [1]] # 15
+  - [-1, 1, BiFPNFuse, [256, 128, 2]] # 16
+  - [-1, 1, Index, [128, 0]] # 17-P4 td
+
+  # top-down: P3out = fuse(P3in, up(P4td))
+  - [17, 1, nn.Upsample, [None, 2, "nearest"]] # 18
+  - [[11, 18], 1, Concat, [1]] # 19
+  - [-1, 1, BiFPNFuse, [256, 128, 2]] # 20
+  - [-1, 1, Index, [128, 0]] # 21-P3 out
+
+  # bottom-up: P4out = fuse(P4in, P4td, down(P3out))
+  - [21, 1, Conv, [128, 3, 2]] # 22
+  - [[12, 17, 22], 1, Concat, [1]] # 23
+  - [-1, 1, BiFPNFuse, [384, 128, 3]] # 24
+  - [-1, 1, Index, [128, 0]] # 25-P4 out
+
+  # bottom-up: P5out = fuse(P5in, down(P4out))
+  - [25, 1, Conv, [128, 3, 2]] # 26
+  - [[13, 26], 1, Concat, [1]] # 27
+  - [-1, 1, BiFPNFuse, [256, 128, 2]] # 28
+  - [-1, 1, Index, [128, 0]] # 29-P5 out
+
+  - [21, 1, CBAM, [128]] # 30
+  - [25, 1, CBAM, [128]] # 31
+  - [29, 1, CBAM, [128]] # 32
+
+  - [[30, 31, 32], 1, Detect, [nc]] # 33

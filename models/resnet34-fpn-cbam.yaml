@@ -1,0 +1,48 @@
+# ResNet34 + FPN + CBAM
+#
+# ImageNet-pretrained ResNet34 backbone, classical top-down FPN neck, CBAM on
+# each level entering the detection head.
+#
+# The backbone is reached through Ultralytics' TorchVision wrapper with
+# split=True, which returns every child module's output as a list; Index then
+# picks the three pyramid levels out of it. For a torchvision ResNet the
+# children are conv1, bn1, relu, maxpool, layer1..layer4, so with the input
+# prepended the list indices are 6 = layer2 (stride 8), 7 = layer3 (stride 16)
+# and 8 = layer4 (stride 32). ResNet34 uses BasicBlock, so those carry 128,
+# 256 and 512 channels.
+#
+# No scales: block, so every channel count below is literal.
+#
+# The neck width matches models/resnet34-bifpn-cbam.yaml exactly. That is
+# deliberate: the two differ only in fusion topology, so the comparison
+# measures FPN against BiFPN rather than one neck being wider than the other.
+
+nc: 1
+
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, TorchVision, [512, resnet34, DEFAULT, True, 2, True]] # 0
+  - [0, 1, Index, [128, 6]] # 1-P3/8
+  - [0, 1, Index, [256, 7]] # 2-P4/16
+  - [0, 1, Index, [512, 8]] # 3-P5/32
+
+head:
+  # lateral 1x1 projections to the common neck width
+  - [1, 1, Conv, [128, 1, 1]] # 4-P3 lateral
+  - [2, 1, Conv, [128, 1, 1]] # 5-P4 lateral
+  - [3, 1, Conv, [128, 1, 1]] # 6-P5 lateral
+
+  # top-down pathway
+  - [6, 1, nn.Upsample, [None, 2, "nearest"]] # 7
+  - [[7, 5], 1, Concat, [1]] # 8
+  - [-1, 1, Conv, [128, 3, 1]] # 9-P4 out
+
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 10
+  - [[10, 4], 1, Concat, [1]] # 11
+  - [-1, 1, Conv, [128, 3, 1]] # 12-P3 out
+
+  - [12, 1, CBAM, [128]] # 13
+  - [9, 1, CBAM, [128]] # 14
+  - [6, 1, CBAM, [128]] # 15
+
+  - [[13, 14, 15], 1, Detect, [nc]] # 16

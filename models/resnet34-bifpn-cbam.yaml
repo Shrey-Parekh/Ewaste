@@ -1,0 +1,59 @@
+# ResNet34 + BiFPN + CBAM
+#
+# Same ImageNet-pretrained ResNet34 backbone and the same neck width as
+# models/resnet34-fpn-cbam.yaml, with the top-down FPN replaced by one BiFPN
+# block: bidirectional flow, a skip from each level's input to its output, and
+# learnable normalised fusion weights instead of plain concatenation.
+#
+# Each fusion is written as three lines. Concat stacks the inputs so the parser
+# can compute their combined width, BiFPNFuse applies the weights and the
+# separable convolution and returns a one-element list, and Index declares the
+# fused width. See lib_modules.BiFPNFuse for why the list is needed.
+#
+# BiFPNFuse args are [concatenated width, fused width, number of inputs].
+
+nc: 1
+
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, TorchVision, [512, resnet34, DEFAULT, True, 2, True]] # 0
+  - [0, 1, Index, [128, 6]] # 1-P3/8
+  - [0, 1, Index, [256, 7]] # 2-P4/16
+  - [0, 1, Index, [512, 8]] # 3-P5/32
+
+head:
+  # lateral 1x1 projections to the common neck width
+  - [1, 1, Conv, [128, 1, 1]] # 4-P3 in
+  - [2, 1, Conv, [128, 1, 1]] # 5-P4 in
+  - [3, 1, Conv, [128, 1, 1]] # 6-P5 in
+
+  # top-down: P4td = fuse(P4in, up(P5in))
+  - [6, 1, nn.Upsample, [None, 2, "nearest"]] # 7
+  - [[5, 7], 1, Concat, [1]] # 8
+  - [-1, 1, BiFPNFuse, [256, 128, 2]] # 9
+  - [-1, 1, Index, [128, 0]] # 10-P4 td
+
+  # top-down: P3out = fuse(P3in, up(P4td))
+  - [10, 1, nn.Upsample, [None, 2, "nearest"]] # 11
+  - [[4, 11], 1, Concat, [1]] # 12
+  - [-1, 1, BiFPNFuse, [256, 128, 2]] # 13
+  - [-1, 1, Index, [128, 0]] # 14-P3 out
+
+  # bottom-up: P4out = fuse(P4in, P4td, down(P3out)) -- the three-input node
+  # carrying the input-to-output skip that distinguishes BiFPN from PANet
+  - [14, 1, Conv, [128, 3, 2]] # 15
+  - [[5, 10, 15], 1, Concat, [1]] # 16
+  - [-1, 1, BiFPNFuse, [384, 128, 3]] # 17
+  - [-1, 1, Index, [128, 0]] # 18-P4 out
+
+  # bottom-up: P5out = fuse(P5in, down(P4out))
+  - [18, 1, Conv, [128, 3, 2]] # 19
+  - [[6, 19], 1, Concat, [1]] # 20
+  - [-1, 1, BiFPNFuse, [256, 128, 2]] # 21
+  - [-1, 1, Index, [128, 0]] # 22-P5 out
+
+  - [14, 1, CBAM, [128]] # 23
+  - [18, 1, CBAM, [128]] # 24
+  - [22, 1, CBAM, [128]] # 25
+
+  - [[23, 24, 25], 1, Detect, [nc]] # 26
