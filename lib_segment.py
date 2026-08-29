@@ -1,19 +1,23 @@
 """
-01_make_cutouts.py  (v2 - improved edges)
------------------------------------------
-STEP 1 of 3.  Runs ONCE.
+lib_segment.py
+-------------------
+Segmentation library for the v3 pipeline. 02_make_cutouts.py imports
+process_folder() and passes_quality() from this module by file path (see the
+loader in 02_make_cutouts.py) rather than duplicating them.
 
-Removes backgrounds from raw/ewaste and raw/organic and writes tight
-transparent PNGs into cutouts/ewaste and cutouts/organic.
-
-What changed vs v1 (this is most of what killed the "pasted sticker" look):
   * alpha matting  -> soft, accurate edges instead of a hard binary cut
   * edge erosion   -> removes the 1-2px halo of the OLD background colour
   * colour despill -> kills the bright fringe left at the boundary
   * edge feather   -> slightly soft boundary, like a real photograph
   * quality filter -> automatically discards failed removals
 
-Run:   python 01_make_cutouts.py
+DO NOT run this file directly. RAW below points at the whole raw/ewaste and
+raw/organic collections, with no regard for which photos 01_build_splits.py
+assigned to the training pool vs the held-out test sets -- extracting from it
+directly is exactly the train/test leak the v3 split manifests exist to
+prevent. Use the pipeline entry point instead:
+
+Run:   python 02_make_cutouts.py
 """
 
 from pathlib import Path
@@ -148,7 +152,7 @@ def process_folder(kind: str):
 
 
 if __name__ == "__main__":
-    for kind in ("ewaste", "organic"):
-        process_folder(kind)
-    print("STEP 1 complete. Open cutouts/ewaste and check a few, then run:")
-    print("   python 02_composite.py")
+    print("[!] This runs extraction on the WHOLE raw/ collection, ignoring the")
+    print("    train/test split manifests -- that is a leak. Use the pipeline")
+    print("    entry point instead:  python 02_make_cutouts.py")
+    raise SystemExit(1)

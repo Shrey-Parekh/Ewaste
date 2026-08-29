@@ -1,0 +1,21 @@
+{
+  "seed": 0,
+  "counts": {
+    "ewaste_pool": 68,
+    "ewaste_test": 400,
+    "organic_bg": 50,
+    "organic_clutter": 50,
+    "organic_test": 747
+  },
+  "ewaste_pool_source": "raw/ewaste",
+  "ewaste_pool_curated": true,
+  "ewaste_test_source": "assets/trash/TrashBox/TrashBox_train_dataset_subfolders/e-waste",
+  "ewaste_test_excluded_as_curated": 52,
+  "organic_source": "assets/trash/realwaste-main/RealWaste",
+  "organic_categories": [
+    "Food Organics",
+    "Vegetation"
+  ],
+  "organic_curated": false,
+  "pairwise_disjoint": true
+}

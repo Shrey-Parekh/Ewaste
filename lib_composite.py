@@ -1,24 +1,29 @@
 """
-02_composite.py  (v2 - realistic compositing)
----------------------------------------------
-STEP 2 of 3.  Builds the labelled training dataset.
+lib_composite.py
+----------------
+Compositing library for the v3 pipeline. 04_build_dataset.py imports this
+module by file path, overrides EWASTE_CUTS/RAW_ORGANIC/OUT below to the v3
+split-manifest paths, then calls main() -- see the loader in
+04_build_dataset.py.
 
-Why v1 looked fake, and what v2 does about it:
+Realism corrections applied while compositing (these calibrate difficulty,
+they are not decoration -- an object pasted without them carries a
+photometric seam a detector can key on instead of learning the object):
 
-  1. No shadows          -> objects floated. v2 renders a soft contact shadow.
-  2. Lighting mismatch   -> studio-lit object on a dull outdoor photo.
-                            v2 harmonises exposure/colour to the local patch.
-  3. Sharpness mismatch  -> crisp object on a softer photo screams "pasted".
-                            v2 measures background detail and blurs to match.
-  4. Clean object, noisy photo -> v2 adds matching grain BEFORE pasting.
-  5. Flat "sticker" look -> v2 applies a mild perspective warp.
-  6. WRONG LABELS        -> v1 kept the full box even when an object was 95%
-                            buried. v2 tracks a visibility mask and shrinks the
-                            box to the visible part, dropping it if too hidden.
+  1. Contact shadow      -> objects don't float.
+  2. Colour harmonisation -> studio-lit object matched to the local patch.
+  3. Sharpness matching   -> background detail measured, object blurred to match.
+  4. Grain matching       -> matching noise added before pasting.
+  5. Perspective warp     -> breaks the flat "sticker" look.
+  6. Visibility-tracked labels -> the box shrinks to the visible fraction,
+                            and is dropped below MIN_VISIBLE_FRAC.
 
-Also writes dataset/preview/ with boxes drawn, so you can eyeball quality fast.
+DO NOT run this file directly. EWASTE_CUTS/RAW_ORGANIC below point at the
+whole raw collections, not the disjoint train/test split manifests -- that is
+the same train/test leak lib_segment.py's direct execution would cause.
+Use the pipeline entry point instead:
 
-Run:   python 02_composite.py
+Run:   python 04_build_dataset.py --pool 200
 """
 
 from pathlib import Path
@@ -65,6 +70,11 @@ SEED = None                 # set an int for reproducible datasets
 # ----------------------------------------------------------
 
 VALID_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
+# Per-object visible fraction phi, appended by build_one(). Written out by
+# main() to <OUT>/visible_fraction.csv. Logging only; does not consume RNG.
+PHI_LOG = []
+
 if SEED is not None:
     random.seed(SEED)
     np.random.seed(SEED)
@@ -421,9 +431,11 @@ def build_one(ewaste_cuts, organic_cuts):
     boxes = []
     for k, orig_count in placed:
         ys, xs = np.where(owner == k)
+        phi = len(xs) / max(orig_count, 1)
+        PHI_LOG.append(phi)
         if len(xs) == 0:
             continue
-        if len(xs) / max(orig_count, 1) < MIN_VISIBLE_FRAC:
+        if phi < MIN_VISIBLE_FRAC:
             continue                       # too buried to be a fair label
         x0, x1 = int(xs.min()), int(xs.max())
         y0, y1 = int(ys.min()), int(ys.max())
@@ -452,7 +464,7 @@ def main():
     ewaste_cuts = load_cutouts(EWASTE_CUTS)
     organic_cuts = load_cutouts(ORGANIC_CUTS)
     if not ewaste_cuts:
-        print("[!] No e-waste cut-outs. Run 01_make_cutouts.py first.")
+        print("[!] No e-waste cut-outs. Run lib_segment.py first.")
         return
     if not any(RAW_ORGANIC.iterdir()):
         print(f"[!] No background photos in {RAW_ORGANIC}")
@@ -499,10 +511,25 @@ def main():
 
     print(f"\nSTEP 2 complete -> {OUT}")
     print(f"  images with no visible label: {empty} ({empty / N_IMAGES:.1%})")
+
+    if PHI_LOG:
+        rows = "\n".join(f"{v:.6f}" for v in PHI_LOG)
+        (OUT / "visible_fraction.csv").write_text("visible_fraction\n" + rows)
+        arr = np.sort(np.array(PHI_LOG))
+        q = lambda t: float(np.quantile(arr, t))
+        print(f"  visible fraction over {len(arr)} placed objects: "
+              f"median {q(0.50):.3f}  p10 {q(0.10):.3f}  p90 {q(0.90):.3f}  "
+              f"mean {arr.mean():.3f}")
+        print(f"  retained at phi >= {MIN_VISIBLE_FRAC}: "
+              f"{(arr >= MIN_VISIBLE_FRAC).mean():.1%}")
     print(f"  LOOK AT dataset/preview/ NOW. If the objects look obviously pasted,")
     print(f"  raise HARMONIZE_STRENGTH or lower MAX_FRAC, then rerun.")
-    print("Then run:  python 03_train.py")
+    print("Then run:  python 05_train.py --pool 200")
 
 
 if __name__ == "__main__":
-    main()
+    print("[!] This composites from the WHOLE raw/organic collection and the")
+    print("    default cutouts/ directory, ignoring the train/test split")
+    print("    manifests -- that is a leak. Use the pipeline entry point instead:")
+    print("    python 04_build_dataset.py --pool 200")
+    raise SystemExit(1)

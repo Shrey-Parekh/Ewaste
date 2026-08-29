@@ -1,0 +1,18 @@
+# Project environment -- the versions every result in the paper was produced
+# with. Recorded exactly rather than loosely so the numbers stay reproducible.
+# Python 3.13.13 on Windows 11, CUDA 12.8, single NVIDIA GeForce RTX 4060 Ti.
+#
+# NOTE: EDNet does NOT run in this environment. It pins torch 2.0.1 and
+# numpy<2.0 and needs its own interpreter; see external/setup_ednet.sh.
+
+torch==2.11.0
+ultralytics==8.4.82
+numpy==2.4.6
+pillow==12.2.0
+matplotlib==3.10.7
+scipy==1.18.0
+opencv-python==4.13.0.92
+
+# cut-out extraction (steps 01 and 11)
+rembg==2.0.76
+onnxruntime==1.27.0
