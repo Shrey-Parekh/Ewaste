@@ -3,7 +3,11 @@ pipeline_common.py
 ------------------
 Helpers shared by every trainer in the pipeline.
 
-These live here rather than in 05_train.py because the EDNet comparison
+It also holds the defensive image decoder, which the evaluator and the
+annotator both need because they read the same photograph corpus.
+
+The trainer helpers live here rather than in 05_train.py because the EDNet
+comparison
 runs in a separate virtual environment that has no Ultralytics installed --
 importing 05_train.py from it would fail on its top-level
 ``from ultralytics import YOLO``. This module imports only NumPy, so both
@@ -14,6 +18,27 @@ comparison between them would be meaningless.
 """
 
 import numpy as np
+from PIL import Image, ImageOps
+
+
+def load_image(path):
+    """
+    Decode a photograph defensively rather than handing the path to a library.
+
+    Ultralytics reads exif orientation via PIL.ImageOps.exif_transpose with no
+    error handling, and a handful of TrashBox photographs carry a malformed
+    EXIF block that raises SyntaxError there and aborts the whole batch. This
+    project's corpus is not going to get its EXIF fixed upstream, so try
+    exif_transpose and fall back to the untransposed image on failure. A wrong
+    orientation on one in ~400 photographs is a rounding error next to the
+    evaluation crashing before it finishes.
+    """
+    im = Image.open(path)
+    try:
+        im = ImageOps.exif_transpose(im)
+    except Exception:
+        pass
+    return im.convert("RGB")
 
 
 def f1_curve(metrics):

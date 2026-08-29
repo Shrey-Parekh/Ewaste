@@ -28,11 +28,25 @@ import csv
 import json
 import sys
 
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw
+
+try:
+    import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
+except ImportError:
+    # The EDNet environment has no Ultralytics, so this module cannot load
+    # there. It is only needed to unpickle the custom-architecture
+    # checkpoints, which are never evaluated under that backend.
+    pass
+from lib_metrics import (count_gflops, count_parameters, localisation_summary,
+                         match_ious, measure_latency, weight_size_mb)
+from pipeline_common import load_image
 
 # ------------------------- CONFIG -------------------------
 ROOT = Path(__file__).parent
 SPLITS = ROOT / "splits"
+# Hand-drawn boxes for ewaste_test, written by 09_annotate.py. Optional: when
+# absent, everything except mIoU and Dice is still reported.
+ANNOTATIONS = ROOT / "annotations" / "ewaste_test"
 
 # Reported in the sweep table -- kept coarse so the printed report stays
 # readable, and unchanged from earlier runs so old reports stay comparable.
@@ -47,6 +61,8 @@ IMG_SIZE = 640
 DEVICE = 0
 BATCH = 16
 SAVE_WORST = 12
+LATENCY_WARMUP = 20
+LATENCY_SAMPLE = 200
 # ----------------------------------------------------------
 
 
@@ -74,24 +90,49 @@ def read_manifest(name: str):
         return [(r["category"], ROOT / r["path"]) for r in csv.DictReader(f)]
 
 
-def load_image(path):
+def load_annotations(rows):
     """
-    Decode a photograph ourselves rather than handing the path to Ultralytics.
+    Read hand-drawn boxes for the e-waste test photographs.
 
-    Ultralytics reads exif orientation via PIL.ImageOps.exif_transpose with no
-    error handling, and a handful of TrashBox photographs carry a malformed
-    EXIF block that raises SyntaxError there and aborts the whole batch. This
-    project's corpus is not going to get its EXIF fixed upstream, so decode
-    defensively here: try exif_transpose, fall back to the untransposed image
-    on failure. A wrong orientation on one in ~400 photographs is a rounding
-    error next to the evaluation crashing before it finishes.
+    Stored in YOLO format -- class, centre x, centre y, width, height, all
+    normalised -- so they are converted to pixel xyxy against each image's own
+    dimensions. Only the header is read to get those, not the pixel data.
+    Returns {path: [[x1,y1,x2,y2], ...]} for the images that have a file.
     """
-    im = Image.open(path)
-    try:
-        im = ImageOps.exif_transpose(im)
-    except Exception:
-        pass
-    return im.convert("RGB")
+    if not ANNOTATIONS.is_dir():
+        return {}
+    out = {}
+    for _, path in rows:
+        label = ANNOTATIONS / f"{path.stem}.txt"
+        if not label.exists():
+            continue
+        with Image.open(path) as im:
+            w, h = im.size
+        boxes = []
+        for line in label.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) != 5:
+                continue
+            _, cx, cy, bw, bh = (float(v) for v in parts)
+            boxes.append([(cx - bw / 2) * w, (cy - bh / 2) * h,
+                          (cx + bw / 2) * w, (cy + bh / 2) * h])
+        out[path] = boxes
+    return out
+
+
+def localisation_at(ew_det, truth, conf):
+    """mIoU and Dice over detections that survive `conf`, against hand-drawn boxes."""
+    if not truth:
+        return None
+    matched, n_gt = [], 0
+    for _, path, confs, boxes in ew_det:
+        gt = truth.get(path)
+        if gt is None:
+            continue
+        n_gt += len(gt)
+        kept = [(c, b) for c, b in zip(confs, boxes) if c >= conf]
+        matched += match_ious([b for _, b in kept], [c for c, _ in kept], gt)
+    return localisation_summary(matched, n_gt)
 
 
 def run_inference(model, rows, label):
@@ -232,6 +273,30 @@ def main():
 
     n_org, n_ew = len(org_det), len(ew_det)
 
+    # Cost of the detector itself. Timed on already-decoded photographs at
+    # batch 1 so the number reflects the network and its NMS rather than the
+    # disk, and on real images rather than synthetic ones so it matches the
+    # setting every other figure in the table is measured in.
+    print('\n=== C) COST: single-image latency on real photographs ===')
+    warm = [load_image(path) for _, path in ewaste[:LATENCY_WARMUP + LATENCY_SAMPLE]]
+    latency_ms, fps = measure_latency(
+        lambda ims: model.predict(ims, conf=min(THRESHOLDS), imgsz=IMG_SIZE,
+                                  device=DEVICE, verbose=False),
+        warm, warmup=LATENCY_WARMUP, sample=LATENCY_SAMPLE)
+    del warm
+    print(f"  median {latency_ms} ms/image  ->  {fps} FPS")
+
+    net = getattr(model, "model", None)
+    capacity = {
+        "n_params": count_parameters(net) if net is not None else None,
+        "gflops": count_gflops(net, IMG_SIZE) if net is not None else None,
+        "model_size_mb": weight_size_mb(weights),
+        "latency_ms": latency_ms,
+        "fps": fps,
+    }
+
+    truth = load_annotations(ewaste)
+
     rows = [score_at(org_det, ew_det, t, n_org, n_ew) for t in THRESHOLDS]
 
     # Fine search for the actual operating point. Free: no extra inference.
@@ -262,6 +327,7 @@ def main():
 
     best = max(fine_rows, key=lambda r: r["f1"])
     best_coarse = max(rows, key=lambda r: r["f1"])
+    localisation = localisation_at(ew_det, truth, best["confidence"])
     synth_conf = synth.get("best_f1_conf")
     at_synth = None
     if synth_conf is not None:
@@ -332,11 +398,46 @@ def main():
     emit("  positive rate on real CONTAMINATED waste, because no such imagery")
     emit("  exists.")
     emit()
-    emit("  LIMITATION: detection rate counts an e-waste photograph as detected")
-    emit("  when the model fires ANYWHERE in the frame. ewaste_test carries no")
-    emit("  ground-truth boxes, so a detection landing on background still")
-    emit("  counts. Treat the figure as an upper bound, and describe it as the")
-    emit("  model firing on the image rather than localising the object.")
+    if not truth:
+        emit("  LIMITATION: detection rate counts an e-waste photograph as detected")
+        emit("  when the model fires ANYWHERE in the frame. ewaste_test carries no")
+        emit("  ground-truth boxes, so a detection landing on background still")
+        emit("  counts. Treat the figure as an upper bound, and describe it as the")
+        emit("  model firing on the image rather than localising the object.")
+    else:
+        emit("  Detection rate counts a photograph as detected when the model fires")
+        emit("  anywhere in the frame. The mIoU below is measured against the")
+        emit("  hand-drawn boxes and is what shows whether those firings actually")
+        emit("  landed on the object.")
+    emit()
+    emit("-" * 74)
+    emit("COST")
+    emit("-" * 74)
+    emit(f"  parameters {capacity['n_params']:,}" if capacity["n_params"]
+         else "  parameters unavailable")
+    emit(f"  GFLOPs     {capacity['gflops']}" if capacity["gflops"]
+         else "  GFLOPs     unavailable (thop not installed in this environment)")
+    emit(f"  weights    {capacity['model_size_mb']} MB")
+    emit(f"  latency    {latency_ms} ms per image at batch 1, {fps} FPS")
+    emit()
+    emit("-" * 74)
+    emit("LOCALISATION")
+    emit("-" * 74)
+    if localisation is None:
+        emit("  no hand-drawn boxes found under annotations/ewaste_test.")
+        emit("  Run 09_annotate.py to enable mIoU and Dice.")
+    elif localisation["n_matched"] == 0:
+        emit(f"  {localisation['n_gt']} boxes annotated, none matched at "
+             f"conf {best['confidence']:.3f}")
+    else:
+        emit(f"  annotated boxes {localisation['n_gt']}, matched "
+             f"{localisation['n_matched']} at IoU >= {localisation['iou_thr']}")
+        emit(f"  mIoU {localisation['mIoU']:.4f}    Dice {localisation['dice']:.4f}")
+        emit("  Averaged over matched detections only; an object the model never")
+        emit("  found has no IoU and is counted as a recall failure instead.")
+        emit("  For an axis-aligned box Dice is exactly 2*IoU/(1+IoU), so it")
+        emit("  ranks models identically to mIoU and adds no new evidence.")
+    emit()
     emit("=" * 74)
 
     fp_conf = best["confidence"]
@@ -353,6 +454,8 @@ def main():
         "real_best": best,                    # fine search, with Wilson CIs
         "real_best_coarse_grid": best_coarse,  # what earlier runs reported
         "real_at_synthetic_conf": at_synth,
+        "capacity": capacity,
+        "localisation": localisation,
         "fine_step": FINE_STEP,
         "sweep": rows,
     }
