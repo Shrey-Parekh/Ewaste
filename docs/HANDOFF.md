@@ -1,6 +1,6 @@
 # Handoff — e-waste contamination detection
 
-Last updated: 2026-08-30
+Last updated: 2026-08-30 (multi-architecture round)
 
 Read this first in a new session. It records what exists, what the numbers
 are, what was decided and why, and what is still open. Everything here was
@@ -110,7 +110,12 @@ Scripts run in numeric order. `lib_*.py` are libraries, not steps.
 | `08_verify_integrity.py` | Asserts no training photo leaked into evaluation |
 | `lib_segment.py` | Segmentation algorithm — imported by `02`, refuses standalone run |
 | `lib_composite.py` | Compositing algorithm — imported by `04`, refuses standalone run |
-| `pipeline_common.py` | F1-curve / operating-point logic shared by `05` and `05b` |
+| `09_annotate.py` | One-off manual pass: hand-draws boxes on the 400 e-waste test photographs |
+| `10_ensemble.py` | Weighted box fusion over the seven detectors, scored like `06` |
+| `11_metrics_table.py` | Collects every evaluated model into one CSV + LaTeX table |
+| `lib_modules.py` | BiFPN node + CBAM/BiFPN registration with the YAML parser |
+| `lib_metrics.py` | Capacity, cost and localisation metrics |
+| `pipeline_common.py` | Operating-point logic and the defensive image decoder |
 
 `lib_segment.py` and `lib_composite.py` deliberately raise `SystemExit` if run
 directly: their module-level defaults point at the whole of `raw/`, ignoring
@@ -177,50 +182,26 @@ chips, 67 smartphones.
 
 ---
 
-## 4. Results so far
+## 4. Results
 
-All three trained on the identical `dataset_pool60` and scored on the
-identical real test sets (400 e-waste / 747 organic photographs).
+**There are currently no results.** Every run was deleted on 2026-08-30 so that
+all eight architectures could be retrained under one uniform schedule, which is
+what makes the comparison fair. Nothing may be quoted from memory.
 
-### Synthetic validation
+The superseded figures (YOLOv8s 78.5%/7.0%, YOLOv11s 84.2%/10.0%, EDNet-S
+82.5%/11.0%) are archived at `docs/archive/2026-08-30-pool60-v1/`. They came
+from a different schedule and are **not** comparable with what the current code
+produces.
 
-| Metric | YOLOv8s | YOLOv11s | EDNet-S |
-|---|---|---|---|
-| Pretrained on | COCO | COCO | **VisDrone** |
-| mAP@0.50 | 0.836 | **0.850** | 0.799 |
-| mAP@0.50:0.95 | 0.572 | **0.590** | 0.537 |
-| Precision | 0.844 | **0.881** | 0.798 |
-| Recall | **0.778** | 0.742 | 0.725 |
-| F1 | **0.813** | 0.809 | 0.767 |
-| Train time | 35.1 min | 38.9 min | 161.1 min |
+### How to read the new numbers when they arrive
 
-### Real-photo evaluation (the numbers that matter)
-
-| Metric | YOLOv8s | YOLOv11s | EDNet-S |
-|---|---|---|---|
-| Operating confidence | 0.490 | 0.345 | 0.275 |
-| Detection rate | 78.5% [74.2, 82.2] | **84.2%** [80.4, 87.5] | 82.5% [78.5, 85.9] |
-| False-alarm rate | **7.0%** [5.3, 9.0] | 10.0% [8.1, 12.4] | 11.0% [8.9, 13.4] |
-| F1 | 0.820 | **0.830** | 0.813 |
-| Detected / 400 | 314 | 337 | 330 |
-| False alarms / 747 | 52 | 75 | 82 |
-
-Intervals are 95% Wilson score.
-
-### How to read this honestly
-
-- **No model dominates on both axes.** v8s has the best specificity, v11s the
-  best sensitivity. Their intervals do not overlap on either metric, so that
-  trade-off is real, not noise.
-- **The F1 ranking is not conclusive.** 0.830 / 0.820 / 0.813 sit inside each
-  model's own confidence interval. Report the trade-off, do not crown a winner
-  on F1.
-- **EDNet is confounded.** Its backbone is VisDrone-pretrained (aerial imagery)
-  while the YOLOs are COCO-pretrained. If EDNet looks worse, part of that is
-  the domain mismatch, not the architecture. This must be stated wherever
-  EDNet appears in a comparison.
-
----
+- **Expect no model to dominate on both axes.** Report the
+  sensitivity/specificity trade-off; do not crown a winner on F1.
+- **Differences under ~4 points are inside seed noise** at one seed per model.
+- **EDNet is confounded.** VisDrone-pretrained backbone against COCO-pretrained
+  YOLO arms and ImageNet-pretrained ResNet arms. State this wherever it appears.
+- **The ensemble costs roughly seven times the inference of one model.** Its
+  FPS column will look poor; report it plainly rather than omitting it.
 
 ## 5. New requirements (from the mentor, not yet implemented)
 
@@ -233,21 +214,23 @@ Intervals are 95% Wilson score.
 | 3 | Precision | Recorded |
 | 4 | Recall | Recorded |
 | 5 | F1-score | Recorded |
-| 6 | mIoU | **Not implemented** |
-| 7 | Dice coefficient | **Not implemented** |
-| 8 | Inference time | **Not implemented** |
-| 9 | FPS | **Not implemented** (derives from 8) |
-| 10 | Parameter count | **Not persisted** (Ultralytics prints it; not saved) |
-| 11 | FLOPs | **Not persisted** (same) |
-| 12 | Model size (MB) | **Not persisted** |
-| 13 | Training time | Recorded (`train_seconds`) |
+| 6 | mIoU | Implemented; needs `09_annotate.py` run first |
+| 7 | Dice coefficient | Implemented; same dependency |
+| 8 | Inference time | Implemented (`06_evaluate.py`, batch 1, real photographs) |
+| 9 | FPS | Implemented (derives from 8) |
+| 10 | Parameter count | Persisted |
+| 11 | FLOPs | Persisted; unavailable in the EDNet venv, which has no thop |
+| 12 | Model size (MB) | Persisted |
+| 13 | Training time | Persisted (`train_seconds`) |
 
-`synthetic_summary.json` currently holds only:
-`pool, seed, model, epochs, dataset, precision, recall, map50, map50_95,
-best_f1, best_f1_conf, train_seconds`. Items 8–12 need adding there.
+For an axis-aligned box, Dice is exactly `2*IoU/(1+IoU)`. It ranks models
+identically to mIoU and carries no independent evidence. It is reported because
+it was asked for, and that relationship is stated wherever it appears.
 
-> The user wrote "model sy" in the original list. Read as **model size**.
-> Confirm if that was meant to be something else.
+`synthetic_summary.json` now also carries `n_params`, `gflops`,
+`model_size_mb`, `batch` and `pretrained_from`. Latency and FPS are measured on
+real photographs by `06_evaluate.py` into `summary.json` under `capacity`;
+mIoU and Dice land under `localisation`.
 
 ### 5.2 Models — 8 total
 
@@ -255,19 +238,27 @@ best_f1, best_f1_conf, train_seconds`. Items 8–12 need adding there.
 |---|---|---|
 | 1 | YOLOv8s | Done |
 | 2 | YOLOv11s | Done |
-| 3 | YOLOv8s + CBAM | To do |
-| 4 | YOLOv11s + CBAM | To do |
-| 5 | ResNet + FPN + CBAM | To do — build from scratch |
-| 6 | ResNet + BiFPN + CBAM | To do — build from scratch |
-| 7 | YOLOv11s + BiFPN + CBAM | To do — neck replacement |
-| 8 | Ensemble | To do — composition undecided |
+| 3 | YOLOv8s + CBAM | Built, `models/yolov8s-cbam.yaml`, tag `v8s_cbam` |
+| 4 | YOLOv11s + CBAM | Built, `models/yolo11s-cbam.yaml`, tag `v11s_cbam` |
+| 5 | ResNet34 + FPN + CBAM | Built, `models/resnet34-fpn-cbam.yaml`, tag `r34_fpn_cbam` |
+| 6 | ResNet34 + BiFPN + CBAM | Built, `models/resnet34-bifpn-cbam.yaml`, tag `r34_bifpn_cbam` |
+| 7 | YOLOv11s + BiFPN + CBAM | Built, `models/yolo11s-bifpn-cbam.yaml`, tag `v11s_bifpn_cbam` |
+| 8 | Ensemble | Built, `10_ensemble.py`, WBF over models 1-7 |
+
+All five configurations were verified to build, forward-pass at stride
+[8, 16, 32], and load their pretrained weights. Models 1 and 2 are unchanged
+and still train from their stock checkpoints, so the baselines re-run without
+touching any new file.
 
 EDNet-S is trained and evaluated but is **not** in the mentor's numbered list.
 Decide whether it stays in the paper as an extra baseline or is dropped.
 
-Models 5–7 are not configuration flags. Ultralytics ships neither BiFPN nor a
-ResNet+FPN detector, so each is a genuine architecture build, debug and train
-cycle. Scope accordingly.
+Models 5 and 6 turned out **not** to need a from-scratch detector, contrary to
+the earlier estimate in this file. Ultralytics ships a `TorchVision` wrapper
+whose `split=True` mode returns every child module's output, so `Index` can take
+P3/P4/P5 straight out of a torchvision ResNet and the rest is an ordinary YAML.
+BiFPN genuinely is absent from Ultralytics and is implemented in
+`lib_modules.py` as a fast normalised weighted fusion node.
 
 ### 5.3 Explainable AI
 
@@ -288,25 +279,31 @@ research effort rather than an add-on.
 | mIoU / Dice scope | **Annotate real test photographs with boxes** | User's explicit choice over synthetic-only |
 | XAI | **Grad-CAM** | Mature tooling for CNN detectors |
 | Primary metrics | Detection rate + false-alarm rate | Precision and F1 additionally depend on the arbitrary 400:747 positive-to-negative ratio |
+| ResNet depth | **resnet34** | Chosen over resnet18 for capacity; both ResNet arms use it, so FPN-vs-BiFPN is the only difference between models 5 and 6 |
+| Neck width | **128 for FPN and BiFPN alike** | A different width would confound neck topology with neck capacity |
+| Batch size | **16, every arm** | Measured: the heaviest model peaks at 7.6 GiB of an 8 GiB card at batch 32. Ultralytics accumulates to a nominal batch of 64, so 16 and 32 optimise identically |
+| CBAM placement | **After the last neck layer, before Detect** | Preserves every pre-existing layer index, so the COCO checkpoint still transfers into the whole backbone and neck |
+| Ensemble | **All 7 models, weighted box fusion** | EDNet excluded: its VisDrone pretraining would put a third corpus inside the ensemble |
+| Annotation | **All 400, drawn by hand** | Model-assisted labels would make the ground truth a function of the model being scored |
 
 ---
 
 ## 7. Open questions
 
-1. **The user's last message was cut off mid-sentence**: *"then from the
-   models"*. Ask what the rest was before assuming.
-2. **Annotation plan for mIoU/Dice.** The user chose to annotate real test
-   photographs with boxes. Nothing has been annotated yet. 1147 photographs is
-   a large manual task — scope it (all of them? a stratified subset? which
-   tool?) before starting.
-3. **Ensemble composition** — which of models 1–7, and fused how (e.g.
-   weighted box fusion)?
-4. **EDNet's place** in the final paper, given it is outside the numbered list.
-5. **Whether the pool-25 diversity ablation returns.** It compared 25 vs 200
-   objects from the *old uncurated* pool and is no longer valid. Drop it, or
+1. **Nothing is trained yet.** Eight runs plus the ensemble are queued; see
+   §11 for the commands.
+2. **The 400 photographs are not annotated yet.** `09_annotate.py` exists and
+   resumes where it stopped; until it has been run, mIoU and Dice are the only
+   two metrics the table cannot fill.
+3. **EDNet's place in the final paper.** It is retained and will be retrained,
+   but it sits outside the mentor's numbered list and is confounded by its
+   pretraining corpus. Decide whether it appears as an extra baseline or is
+   dropped once its numbers exist.
+4. **Whether the pool-25 diversity ablation returns.** It compared 25 vs 200
+   objects from the old uncurated pool and is no longer valid. Drop it, or
    re-run within the curated pool.
-
----
+5. **Grad-CAM target.** §5.3 calls for it on whichever of models 1-7 performs
+   best, which cannot be chosen until they have all been trained.
 
 ## 8. Manuscript status
 
@@ -348,13 +345,16 @@ numbers that no longer exist. Needs:
 
 ## 10. Housekeeping
 
-- **`runs/detect/pool60_ednets2/`** is a failed EDNet run — no weights, no
-  `results.csv`. Safe to delete; left in place pending confirmation.
-- **`runs/detect/val/`, `val-2/`** are bare Ultralytics validation dumps.
-- **`dataset_pool61/`** is superseded by `dataset_pool60/` and unused.
+- **All run and evaluation directories were deleted on 2026-08-30**, along with
+  the superseded `dataset_pool61/`. That freed 390 MB. `dataset_pool60/` is
+  intact and is what every queued run trains on.
+- **`docs/archive/2026-08-30-pool60-v1/`** holds the summaries of the deleted
+  runs, and nothing else from them.
 - **`notebook40dabb2c62.ipynb`** is the executed Kaggle notebook, kept for its
   recorded output. `kaggle_train_yolov8s.ipynb` is the clean source.
 - **`dataset_pool60_kaggle.zip`** (223 MB) is the Kaggle upload artefact.
+- `models/` and `annotations/` are tracked. `annotations/` is drawn by hand and
+  cannot be regenerated, so it must never be added to `.gitignore`.
 
 ### Training on Kaggle
 
@@ -363,3 +363,82 @@ what the results above use. The notebook copies the dataset into
 `/kaggle/working` because `/kaggle/input` is read-only and Ultralytics needs to
 write label caches. Use **Save Version → Save & Run All (Commit)** for
 unattended runs, not the interactive Run All.
+
+---
+
+## 11. The queued run
+
+Train one model at a time; two will not fit on the card. Evaluation is
+inference-only, so it can overlap the next training if you want to.
+
+Tags are not cosmetic. `10_ensemble.py` and `11_metrics_table.py` locate run
+directories by them, so they must match exactly as written.
+
+### Baselines (unchanged architectures)
+
+```bash
+python 05_train.py    --pool 60 --model yolov8s.pt
+python 06_evaluate.py --pool 60
+
+python 05_train.py    --pool 60 --model yolo11s.pt --tag yolo11s
+python 06_evaluate.py --pool 60 --tag yolo11s
+```
+
+### Attention variants
+
+```bash
+python 05_train.py    --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_cbam
+python 06_evaluate.py --pool 60 --tag v8s_cbam
+
+python 05_train.py    --pool 60 --model models/yolo11s-cbam.yaml --tag v11s_cbam
+python 06_evaluate.py --pool 60 --tag v11s_cbam
+```
+
+### New backbones and necks
+
+```bash
+python 05_train.py    --pool 60 --model models/resnet34-fpn-cbam.yaml --tag r34_fpn_cbam
+python 06_evaluate.py --pool 60 --tag r34_fpn_cbam
+
+python 05_train.py    --pool 60 --model models/resnet34-bifpn-cbam.yaml --tag r34_bifpn_cbam
+python 06_evaluate.py --pool 60 --tag r34_bifpn_cbam
+
+python 05_train.py    --pool 60 --model models/yolo11s-bifpn-cbam.yaml --tag v11s_bifpn_cbam
+python 06_evaluate.py --pool 60 --tag v11s_bifpn_cbam
+```
+
+### EDNet (its own interpreter)
+
+```bash
+external/.venv-ednet/Scripts/python.exe 05b_train_ednet.py --pool 60
+external/.venv-ednet/Scripts/python.exe 06_evaluate.py --pool 60 --tag ednets --backend ednet
+```
+
+The tag is `ednets`, not `ednet`. Using the wrong one produces
+`[!] weights not found`. That environment has no thop, so its GFLOPs cell will
+read `-`; every other metric is measured.
+
+### Ensemble and the metrics table
+
+Both need all seven single models present first.
+
+```bash
+python 10_ensemble.py --pool 60
+python 11_metrics_table.py --pool 60
+```
+
+`11_metrics_table.py` can be run at any point; it prints what exists and names
+what is still missing.
+
+### Annotation
+
+Independent of training, and resumable — it opens at the first photograph
+without a label file.
+
+```bash
+python 09_annotate.py
+python 09_annotate.py --check
+```
+
+Until this has been run, mIoU and Dice are the only cells in the table that
+cannot be filled.
