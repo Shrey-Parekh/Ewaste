@@ -35,6 +35,8 @@ Output: annotations/ewaste_test/<stem>.txt   YOLO format, one class
 from pathlib import Path
 import argparse
 import csv
+import json
+import random
 
 from PIL import Image, ImageTk
 
@@ -43,6 +45,10 @@ from pipeline_common import load_image
 ROOT = Path(__file__).parent
 SPLITS = ROOT / "splits"
 OUT = ROOT / "annotations" / "ewaste_test"
+# Which photographs are in scope. Written once by --subset and then obeyed, so
+# the sample stays fixed across sessions and can be audited from the repository
+# rather than depending on what happened to get annotated.
+SUBSET = ROOT / "annotations" / "subset.json"
 
 MIN_BOX_PX = 4
 # 74 of the 400 test photographs are under 400 px on the longest edge and the
@@ -55,8 +61,37 @@ LIVE_COLOUR = "#FFCC00"
 
 
 def read_manifest():
+    """Every held-out e-waste photograph, as (category, path)."""
     with open(SPLITS / "ewaste_test.csv", encoding="utf-8") as f:
-        return [ROOT / r["path"] for r in csv.DictReader(f)]
+        return [(r["category"], ROOT / r["path"]) for r in csv.DictReader(f)]
+
+
+def select_subset(rows, n, seed=0):
+    """
+    Draw n photographs stratified by category, in proportion to the whole set.
+
+    Proportional rather than equal-sized strata: the point is an unbiased
+    estimate of mIoU over the test set as it actually is, not an equal weighting
+    of categories that do not occur equally. Largest-remainder allocation, so
+    the parts sum to n exactly. Seeded, so the same sample comes back.
+    """
+    by_cat = {}
+    for category, path in rows:
+        by_cat.setdefault(category, []).append(path)
+
+    total = len(rows)
+    exact = {c: n * len(v) / total for c, v in by_cat.items()}
+    quota = {c: int(v) for c, v in exact.items()}
+    for c in sorted(by_cat, key=lambda c: exact[c] - quota[c], reverse=True):
+        if sum(quota.values()) >= n:
+            break
+        quota[c] += 1
+
+    rng = random.Random(seed)
+    chosen = []
+    for category in sorted(by_cat):
+        chosen += rng.sample(sorted(by_cat[category]), quota[category])
+    return sorted(chosen), quota
 
 
 def label_path(image_path):
@@ -99,7 +134,21 @@ def count_boxes(image_path):
                if line.strip())
 
 
-def report(paths):
+def load_subset(rows):
+    """The in-scope photographs: the recorded subset if there is one, else all."""
+    paths = [p for _, p in rows]
+    if not SUBSET.exists():
+        return paths, None
+    spec = json.loads(SUBSET.read_text(encoding="utf-8"))
+    wanted = set(spec["stems"])
+    return [p for p in paths if p.stem in wanted], spec
+
+
+def report(paths, spec=None):
+    if spec:
+        print(f"stratified subset of {len(paths)} drawn from "
+              f"{spec['population']} with seed {spec['seed']}: "
+              + ", ".join(f"{k} {v}" for k, v in sorted(spec["quota"].items())))
     done = [p for p in paths if label_path(p).exists()]
     boxes = sum(count_boxes(p) for p in done)
     print(f"annotated {len(done)} of {len(paths)} photographs, {boxes} boxes")
@@ -232,17 +281,46 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
                     help="print coverage and exit without opening the window")
+    ap.add_argument("--subset", type=int, metavar="N",
+                    help="draw and record a stratified sample of N photographs; "
+                         "once recorded it is obeyed without the flag")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="seed for the subset draw")
+    ap.add_argument("--all", action="store_true",
+                    help="ignore any recorded subset and work on every photograph")
     args = ap.parse_args()
 
-    paths = read_manifest()
-    missing = [p for p in paths if not p.exists()]
+    rows = read_manifest()
+    missing = [p for _, p in rows if not p.exists()]
     if missing:
         print(f"[!] {len(missing)} photographs in the manifest are not on disk, "
               f"first: {missing[0]}")
         return
 
+    if args.subset:
+        if SUBSET.exists() and not args.all:
+            print(f"[!] {SUBSET.relative_to(ROOT)} already exists. Delete it to "
+                  f"draw a different sample; redrawing would change which "
+                  f"photographs the reported mIoU is measured on.")
+            return
+        chosen, quota = select_subset(rows, args.subset, args.seed)
+        SUBSET.parent.mkdir(parents=True, exist_ok=True)
+        SUBSET.write_text(json.dumps({
+            "n": len(chosen),
+            "population": len(rows),
+            "seed": args.seed,
+            "quota": quota,
+            "stems": [p.stem for p in chosen],
+        }, indent=2), encoding="utf-8")
+        print(f"recorded {SUBSET.relative_to(ROOT)}: {len(chosen)} photographs")
+
+    if args.all:
+        paths, spec = [p for _, p in rows], None
+    else:
+        paths, spec = load_subset(rows)
+
     if args.check:
-        report(paths)
+        report(paths, spec)
         return
 
     import tkinter as tk
