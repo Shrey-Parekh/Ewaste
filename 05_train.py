@@ -48,8 +48,22 @@ TRAIN_CFG = dict(
     seed=0,
     deterministic=True,
     device=0,
-    cache="ram",          # 1500 images decode to ~1.8 GB; removes the loader stall
-    workers=12,
+    # Both of these are set low deliberately, and both were measured.
+    #
+    # cache="ram" holds the decoded dataset on the dataset object, and Windows
+    # dataloader workers use spawn, which pickles that whole object into every
+    # worker: 1.84 GB times the worker count. It exhausted 32 GB and killed a
+    # run outright, and it was also slower -- 36.8 s an epoch against 13.5 s
+    # without it, because the pickling cost more than the decode it avoided.
+    #
+    # Worker count matters for the same reason. Each spawned worker is a fresh
+    # interpreter that re-imports torch and initialises CUDA host-side, costing
+    # 2-3 GB of private memory that fork would have shared. Measured peak host
+    # RAM for one run: 25.1 GB at 8 workers, 17.7 GB at 4, 12.5 GB at 2. The
+    # GPU saturates at about 5.6 it/s regardless, so 2 workers cost 5% of epoch
+    # time (14.2 s against 13.5 s) and buy back half the memory.
+    cache=False,
+    workers=2,
     # augmentation tuned for small, partly buried objects
     mosaic=1.0,
     close_mosaic=15,
@@ -97,6 +111,9 @@ def main():
     ap.add_argument("--tag", type=str, default="",
                     help="suffix for the run directory, used by the "
                          "architecture comparison")
+    ap.add_argument("--workers", type=int, default=TRAIN_CFG["workers"],
+                    help="dataloader workers; affects speed and host RAM only, "
+                         "never the result")
     ap.add_argument("--seed", type=int, default=TRAIN_CFG["seed"],
                     help="training seed; the dataset is held fixed, so varying "
                          "this isolates run-to-run variance from initialisation, "
@@ -120,7 +137,8 @@ def main():
         print(f"[+] transferring matching layers from {weights}")
         model.load(weights)
 
-    cfg = dict(TRAIN_CFG, epochs=args.epochs, seed=args.seed)
+    cfg = dict(TRAIN_CFG, epochs=args.epochs, seed=args.seed,
+               workers=args.workers)
 
     t0 = time.time()
     model.train(data=str(data), name=run_name, **cfg)
