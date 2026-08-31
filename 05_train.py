@@ -111,6 +111,10 @@ def main():
     ap.add_argument("--tag", type=str, default="",
                     help="suffix for the run directory, used by the "
                          "architecture comparison")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue an interrupted run from weights/last.pt in "
+                         "its run directory, exactly where it stopped -- same "
+                         "optimizer state, same epoch, same LR schedule")
     ap.add_argument("--workers", type=int, default=TRAIN_CFG["workers"],
                     help="dataloader workers; affects speed and host RAM only, "
                          "never the result")
@@ -131,24 +135,41 @@ def main():
     elif args.seed != 0:
         run_name = f"{run_name}_s{args.seed}"
 
-    model = YOLO(args.model)
-    weights = resolve_weights(args.model, args.weights)
-    if weights:
-        print(f"[+] transferring matching layers from {weights}")
-        model.load(weights)
+    out_dir = ROOT / "runs" / "detect" / run_name
+    # Built unconditionally: the summary below reports batch/imgsz regardless
+    # of which branch trained, and a resumed run never rebuilds this dict.
+    cfg = dict(TRAIN_CFG, epochs=args.epochs, seed=args.seed, workers=args.workers)
 
-    cfg = dict(TRAIN_CFG, epochs=args.epochs, seed=args.seed,
-               workers=args.workers)
+    if args.resume:
+        last = out_dir / "weights" / "last.pt"
+        if not last.exists():
+            print(f"[!] no checkpoint to resume: {last}")
+            return
+        weights = None
+        model = YOLO(str(last))
+        t0 = time.time()
+        # resume=True restores data, epochs, optimizer and LR schedule from the
+        # checkpoint itself -- passing them again would be ignored at best and
+        # contradictory at worst, so nothing else from TRAIN_CFG is passed.
+        model.train(resume=True)
+        train_seconds = time.time() - t0
+        print("[+] resumed from " + last.name + f"; {train_seconds:.0f}s covers "
+              "only the segment run just now, not the interrupted portion")
+    else:
+        model = YOLO(args.model)
+        weights = resolve_weights(args.model, args.weights)
+        if weights:
+            print(f"[+] transferring matching layers from {weights}")
+            model.load(weights)
 
-    t0 = time.time()
-    model.train(data=str(data), name=run_name, **cfg)
-    train_seconds = time.time() - t0
+        t0 = time.time()
+        model.train(data=str(data), name=run_name, **cfg)
+        train_seconds = time.time() - t0
 
     print("\n--- validation on the SYNTHETIC split ---")
     metrics = model.val()
     conf, f1 = best_f1_point(metrics)
 
-    out_dir = ROOT / "runs" / "detect" / run_name
     write_f1_curve(out_dir, metrics)
 
     best = out_dir / "weights" / "best.pt"
