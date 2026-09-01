@@ -121,18 +121,53 @@ def load_annotations(rows):
 
 
 def localisation_at(ew_det, truth, conf):
-    """mIoU and Dice over detections that survive `conf`, against hand-drawn boxes."""
+    """
+    mIoU and Dice over detections that survive `conf`, against hand-drawn boxes,
+    plus the per-image counts needed to interpret them.
+
+    The counts matter because a bare match rate is ambiguous. A model that fires
+    once on a photograph holding three annotated objects can match at most one
+    of them however well it is aimed, so a low ratio of matches to ground truths
+    may be arithmetic rather than mislocalisation. The ceiling below,
+    sum(min(detections, ground truths)) over images, is the most matches that
+    were even possible; comparing the actual total against it separates the two.
+    """
     if not truth:
-        return None
-    matched, n_gt = [], 0
+        return None, []
+    matched, n_gt, rows = [], 0, []
     for _, path, confs, boxes in ew_det:
         gt = truth.get(path)
         if gt is None:
             continue
         n_gt += len(gt)
         kept = [(c, b) for c, b in zip(confs, boxes) if c >= conf]
-        matched += match_ious([b for _, b in kept], [c for c, _ in kept], gt)
-    return localisation_summary(matched, n_gt)
+        ious = match_ious([b for _, b in kept], [c for c, _ in kept], gt)
+        matched += ious
+        rows.append({
+            "path": path,
+            "n_gt": len(gt),
+            "n_detections": len(kept),
+            "n_matched": len(ious),
+            "ceiling": min(len(kept), len(gt)),
+            "best_iou": round(max(ious), 4) if ious else 0.0,
+        })
+    summary = localisation_summary(matched, n_gt)
+
+    fired = [r for r in rows if r["n_detections"]]
+    hit = [r for r in rows if r["n_matched"]]
+    ceiling = sum(r["ceiling"] for r in rows)
+    summary.update({
+        "n_images": len(rows),
+        "n_images_fired": len(fired),
+        "n_images_with_a_match": len(hit),
+        "match_ceiling": ceiling,
+        # of the matches that were geometrically possible, how many landed
+        "ceiling_utilisation": round(summary["n_matched"] / ceiling, 4) if ceiling else None,
+        # when the model fires on an annotated photograph, how often does any
+        # of its boxes actually land on an annotated object
+        "hit_rate_given_fired": round(len(hit) / len(fired), 4) if fired else None,
+    })
+    return summary, rows
 
 
 def run_inference(model, rows, label):
@@ -317,6 +352,15 @@ def main():
         w.writeheader()
         w.writerows(fine_rows)
 
+    if loc_rows:
+        with open(out / "localisation_per_image.csv", "w", newline="",
+                  encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["path", "n_gt", "n_detections",
+                                              "n_matched", "ceiling", "best_iou"])
+            w.writeheader()
+            for r in loc_rows:
+                w.writerow(dict(r, path=r["path"].relative_to(ROOT).as_posix()))
+
     with open(out / "per_image.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["role", "category", "path", "n_boxes", "max_conf"])
@@ -339,7 +383,7 @@ def main():
     headline = at_synth if at_synth is not None else best
     headline_source = ("synthetic validation" if at_synth is not None
                        else "TEST SET -- no synthetic threshold available")
-    localisation = localisation_at(ew_det, truth, headline["confidence"])
+    localisation, loc_rows = localisation_at(ew_det, truth, headline["confidence"])
     synth_conf = synth.get("best_f1_conf")
     at_synth = None
     if synth_conf is not None:
@@ -455,6 +499,20 @@ def main():
         emit(f"  mIoU {localisation['mIoU']:.4f}    Dice {localisation['dice']:.4f}")
         emit("  Averaged over matched detections only; an object the model never")
         emit("  found has no IoU and is counted as a recall failure instead.")
+        emit()
+        emit(f"  annotated photographs {localisation['n_images']}, "
+             f"model fired on {localisation['n_images_fired']}, "
+             f"landed on an object in {localisation['n_images_with_a_match']}")
+        if localisation["hit_rate_given_fired"] is not None:
+            emit(f"  when it fires, it hits an annotated object "
+                 f"{localisation['hit_rate_given_fired']:.1%} of the time")
+        if localisation["ceiling_utilisation"] is not None:
+            emit(f"  matches {localisation['n_matched']} of the "
+                 f"{localisation['match_ceiling']} that were geometrically "
+                 f"possible ({localisation['ceiling_utilisation']:.1%})")
+            emit("  A low ratio of matches to annotated boxes is partly arithmetic:")
+            emit("  one detection cannot match several objects in one frame. The")
+            emit("  ceiling figure is the comparison that is not confounded by that.")
         emit("  For an axis-aligned box Dice is exactly 2*IoU/(1+IoU), so it")
         emit("  ranks models identically to mIoU and adds no new evidence.")
     emit()

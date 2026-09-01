@@ -267,7 +267,7 @@ def main():
         print(f"  threshold {synth_conf:.3f} (box F1 {synth_f1:.3f} on synthetic val)")
     else:
         headline, headline_source = best, "TEST SET -- no synthetic split found"
-    localisation = ev.localisation_at(ew_det, truth, headline["confidence"])
+    localisation, loc_rows = ev.localisation_at(ew_det, truth, headline["confidence"])
 
     for name, data in (("threshold_sweep.csv", rows),
                        ("threshold_sweep_fine.csv", fine_rows)):
@@ -275,6 +275,15 @@ def main():
             writer = csv.DictWriter(f, fieldnames=list(data[0].keys()))
             writer.writeheader()
             writer.writerows(data)
+
+    if loc_rows:
+        with open(out / "localisation_per_image.csv", "w", newline="",
+                  encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["path", "n_gt", "n_detections",
+                                              "n_matched", "ceiling", "best_iou"])
+            w.writeheader()
+            for r in loc_rows:
+                w.writerow(dict(r, path=r["path"].relative_to(ROOT).as_posix()))
 
     with open(out / "per_image.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
