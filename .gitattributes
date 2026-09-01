@@ -1,0 +1,15 @@
+# Normalise line endings to LF in the repository, check out native. This is
+# what silences the "LF will be replaced by CRLF" warning that appeared on
+# every commit, and it keeps the repository readable if it is ever cloned on
+# Linux or macOS.
+* text=auto
+
+# Manuscripts/manuscript_preview.html is a generated preview: 1.2 MB, larger
+# than every Python, LaTeX and notebook file in this repository put together.
+# GitHub's language statistics ignore the PDFs and PNGs as binary, so that one
+# file was making the project read as 74% HTML. Marking it generated drops it
+# from the language bar and collapses it in diffs. The file itself stays.
+Manuscripts/manuscript_preview.html linguist-generated=true
+
+# Kept for its recorded output rather than as source.
+notebook40dabb2c62.ipynb linguist-generated=true
