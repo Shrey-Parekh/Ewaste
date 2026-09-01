@@ -148,8 +148,11 @@ def main():
                          "its run directory, exactly where it stopped -- same "
                          "optimizer state, same epoch, same LR schedule")
     ap.add_argument("--workers", type=int, default=TRAIN_CFG["workers"],
-                    help="dataloader workers; affects speed and host RAM only, "
-                         "never the result")
+                    help="dataloader workers. Changes speed and host RAM, and "
+                         "also the augmentation stream: each worker seeds its "
+                         "own RNG, so the count changes which augmented images "
+                         "the model sees even at a fixed --seed. Hold it "
+                         "constant across arms being compared.")
     ap.add_argument("--seed", type=int, default=TRAIN_CFG["seed"],
                     help="training seed; the dataset is held fixed, so varying "
                          "this isolates run-to-run variance from initialisation, "
