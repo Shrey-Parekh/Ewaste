@@ -108,3 +108,10 @@ zenodo_deposit.zip
 # ---- logs and editor leftovers ----
 *.log
 *.bak
+
+# ---- manuscript sources ----
+# The LaTeX, the figures and the compiled PDFs live only on the author's
+# machine. They came to 40 MB, which was 99% of everything this repository
+# tracked, and they are the paper rather than the code that produced it. The
+# pipeline is fully reproducible without them.
+Manuscripts/
