@@ -86,6 +86,22 @@ is 16 for every arm, chosen by measuring peak VRAM across all of them: the
 heaviest reaches 7.6 GiB of an 8 GiB card at batch 32, which leaves nothing for
 the desktop.
 
+Every arm also gets a warm-up phase: whatever inherited pretrained weights is
+frozen while the newly initialised layers settle against it, then everything is
+released. One rule for all of them, though the frozen set necessarily differs,
+since only some arms have new layers to settle. It is on by default and
+disabled with `--warmup-epochs 0`.
+
+The neck configurations in `models/` are generated, not hand-written:
+
+```bash
+python models/generate_necks.py --width 128 --repeats 2
+```
+
+Width and pass count apply to the FPN and the BiFPN arms together. Those two
+exist to compare fusion topology, which only works while everything else about
+them matches.
+
 ```bash
 python 05_train.py    --pool 60 --model yolov8s.pt
 python 06_evaluate.py --pool 60

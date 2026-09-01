@@ -366,6 +366,50 @@ unattended runs, not the interactive Run All.
 
 ---
 
+## 11. Architecture fixes applied 2026-08-31
+
+Four changes, each its own commit. **Every model needs retraining**: the first
+three alter the networks or how they are optimised, so no existing result is
+comparable with anything produced after them.
+
+1. **CBAM gates now start open.** Stock CBAM initialises both gate convolutions
+   the default way, which passes only 28.7% of the feature magnitude through a
+   non-uniform random mask. Appended to a pretrained neck, that corrupts a
+   converged representation on the first forward pass, and it is what cost
+   YOLOv8s 5.8 points of detection rate. Zeroing the gates and opening them with
+   a bias of 2.0 makes the block a uniform pass-through at initialisation
+   (verified: gain standard deviation 0.0000, correlation 1.0000 with the
+   input) while the gates keep their gradient.
+
+2. **Warm-up phase.** Pretrained layers are frozen for 10 epochs while the new
+   ones settle, then released. Verified: all 270 pretrained tensors came back
+   bit-identical from a warm-up run. The epochs are additional to the 120, not
+   deducted, so a gain from warming up is not confounded with ten fewer full
+   epochs.
+
+3. **Necks are generated, with two passes instead of one.** `models/
+   generate_necks.py` emits the three neck configurations from one width and
+   one pass count. BiFPN had a single block where EfficientDet uses three or
+   more. Both necks take the same count, because giving BiFPN more depth than
+   FPN would confound the topology those two arms exist to compare.
+
+4. **The `--workers` documentation was wrong** and is corrected. Worker count
+   changes the augmentation stream, because each worker seeds its own RNG. It
+   is not reproducibility-neutral.
+
+### Still open from the diagnostic, not yet done
+
+- **The operating threshold is tuned on the test set.** `06_evaluate.py` picks
+  the confidence maximising F1 on the test set and reports there. Measured
+  optimism is small for most arms but +0.070 F1 for YOLOv11s+BiFPN, whose
+  honest detection rate at the synthetic threshold is 56.2%, not 77.5%.
+  `real_at_synthetic_conf` is already computed in every summary; this is a
+  reporting change, not a re-run.
+- Single seed per model; no paired McNemar test; cable-skewed localisation
+  ground truth; undiagnosed low box match rate. See sections above.
+
+---
+
 ## 11. The queued run
 
 Train one model at a time; two will not fit on the card. Evaluation is
