@@ -85,6 +85,33 @@ TRAIN_CFG = dict(
 # detection head, which is rebuilt for one class in any case.
 PRETRAINED = {"yolov8s": "yolov8s.pt", "yolo11s": "yolo11s.pt"}
 
+# How many leading layers of each architecture arrive already trained, and are
+# therefore frozen during the warm-up phase. One rule applied to every arm:
+# freeze whatever inherited pretrained weights, let the new layers settle
+# against them, then release everything.
+#
+# The counts are not guesses. They were read off the checkpoint transfer: the
+# COCO weights match layers 0-21 of YOLOv8s and 0-22 of YOLO11s, and the CBAM
+# variants keep those same indices because the attention blocks are appended
+# rather than inserted. Replacing the neck with BiFPN leaves only the YOLO11s
+# backbone, 0-10. The ResNet configurations carry ImageNet weights inside the
+# single TorchVision layer at index 0.
+WARMUP_FREEZE = {
+    "yolov8s": 22,
+    "yolo11s": 23,
+    "yolov8s-cbam": 22,
+    "yolo11s-cbam": 23,
+    "yolo11s-bifpn-cbam": 11,
+    "resnet34-fpn-cbam": 1,
+    "resnet34-bifpn-cbam": 1,
+}
+
+
+def freeze_depth(model_arg):
+    """Leading layers to hold fixed during warm-up, or 0 if nothing is pretrained."""
+    stem = Path(model_arg).stem
+    return WARMUP_FREEZE.get(stem, 0)
+
 
 def resolve_weights(model_arg, override):
     if override:
@@ -111,6 +138,11 @@ def main():
     ap.add_argument("--tag", type=str, default="",
                     help="suffix for the run directory, used by the "
                          "architecture comparison")
+    ap.add_argument("--warmup-epochs", type=int, default=10,
+                    help="epochs spent training only the newly initialised "
+                         "layers with the pretrained ones frozen, before the "
+                         "full run. These are additional to --epochs, not taken "
+                         "out of it. 0 disables.")
     ap.add_argument("--resume", action="store_true",
                     help="continue an interrupted run from weights/last.pt in "
                          "its run directory, exactly where it stopped -- same "
@@ -163,6 +195,24 @@ def main():
             model.load(weights)
 
         t0 = time.time()
+
+        depth = freeze_depth(args.model)
+        if args.warmup_epochs > 0 and depth > 0:
+            # Phase one. The new layers start from random values and sit against
+            # a converged backbone; letting them move while everything else is
+            # held still stops that noise from being back-propagated into
+            # weights that were already right.
+            print(f"[+] warm-up: {args.warmup_epochs} epochs with layers "
+                  f"0-{depth - 1} frozen")
+            warm_name = f"{run_name}_warmup"
+            model.train(data=str(data), name=warm_name,
+                        **dict(cfg, epochs=args.warmup_epochs, freeze=depth))
+            warmed = ROOT / "runs" / "detect" / warm_name / "weights" / "last.pt"
+            # last.pt, not best.pt: warm-up is initialisation, not model
+            # selection, and the best epoch of a frozen run is not meaningful.
+            model = YOLO(str(warmed))
+            print(f"[+] warm-up complete, continuing from {warmed.name}")
+
         model.train(data=str(data), name=run_name, **cfg)
         train_seconds = time.time() - t0
 
@@ -182,6 +232,8 @@ def main():
         "pretrained_from": weights,
         "epochs": args.epochs,
         "batch": cfg["batch"],
+        "warmup_epochs": args.warmup_epochs if freeze_depth(args.model) else 0,
+        "warmup_frozen_layers": freeze_depth(args.model),
         "imgsz": cfg["imgsz"],
         "dataset": data.parent.name,
         "precision": float(metrics.box.mp),
