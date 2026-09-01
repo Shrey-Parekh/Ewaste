@@ -128,6 +128,45 @@ def match_ious(pred, scores, gt, iou_thr=0.5):
     return out
 
 
+def box_counts(pred, scores, gt, conf, iou_thr=0.5):
+    """True positives, false positives and false negatives for one image."""
+    kept = [(c, b) for c, b in zip(scores, pred) if c >= conf]
+    if not kept:
+        return 0, 0, len(gt)
+    boxes = [b for _, b in kept]
+    confs = [c for c, _ in kept]
+    tp = len(match_ious(boxes, confs, gt, iou_thr))
+    return tp, len(kept) - tp, len(gt) - tp
+
+
+def best_box_f1(per_image, grid, iou_thr=0.5):
+    """
+    Confidence maximising box-level F1 over a held-out set, and that F1.
+
+    ``per_image`` is a list of (confidences, boxes, ground-truth boxes).
+
+    This exists so an ensemble can choose its operating threshold the same way
+    a single model does. Ultralytics hands each model a box-level F1 curve over
+    the synthetic validation split and the pipeline takes its argmax; a fused
+    detector has no such curve, and without one its threshold would have to be
+    picked on the test set, which is the bias this is here to avoid.
+    """
+    best_conf, best_f1 = grid[0], -1.0
+    for conf in grid:
+        tp = fp = fn = 0
+        for scores, boxes, gt in per_image:
+            a, b, c = box_counts(boxes, scores, gt, conf, iou_thr)
+            tp += a
+            fp += b
+            fn += c
+        prec = tp / (tp + fp) if tp + fp else 0.0
+        rec = tp / (tp + fn) if tp + fn else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
+        if f1 > best_f1:
+            best_conf, best_f1 = conf, f1
+    return float(best_conf), float(best_f1)
+
+
 def localisation_summary(all_ious, n_gt, iou_thr=0.5):
     """
     Aggregate matched IoUs into the mIoU and Dice the paper reports.

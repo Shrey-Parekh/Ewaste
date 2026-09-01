@@ -327,7 +327,19 @@ def main():
 
     best = max(fine_rows, key=lambda r: r["f1"])
     best_coarse = max(rows, key=lambda r: r["f1"])
-    localisation = localisation_at(ew_det, truth, best["confidence"])
+
+    # The reported operating point is the one carried over from synthetic
+    # validation, not the one that maximises F1 on the test set. Choosing a
+    # threshold on the same data the threshold is then scored on is optimistic
+    # by construction: measured across these architectures the gap is small for
+    # most, but reached +0.070 F1 for one, whose detection rate went from 56.2%
+    # honestly reported to 77.5% tuned. The tuned figure is kept and printed,
+    # clearly labelled, because the distance between the two says something
+    # about how threshold-sensitive a model is.
+    headline = at_synth if at_synth is not None else best
+    headline_source = ("synthetic validation" if at_synth is not None
+                       else "TEST SET -- no synthetic threshold available")
+    localisation = localisation_at(ew_det, truth, headline["confidence"])
     synth_conf = synth.get("best_f1_conf")
     at_synth = None
     if synth_conf is not None:
@@ -366,24 +378,32 @@ def main():
     emit("                case and each e-waste image as a positive case")
     emit()
     emit("-" * 74)
-    emit("OPERATING POINTS")
+    emit("OPERATING POINT  <-- report these numbers")
     emit("-" * 74)
+    emit(f"  confidence {headline['confidence']:.3f}, chosen on {headline_source}")
+    emit(f"    detection {headline['ewaste_detection_rate']:.1%} "
+         f"({headline['ewaste_imgs_detected']} of {n_ew})"
+         f"   95% CI [{headline['detect_ci_low']:.1%}, {headline['detect_ci_high']:.1%}]")
+    emit(f"    false alarms {headline['organic_FP_rate']:.1%} "
+         f"({headline['organic_imgs_with_FP']} of {n_org})"
+         f"   95% CI [{headline['fp_ci_low']:.1%}, {headline['fp_ci_high']:.1%}]")
+    emit(f"    F1 {headline['f1']:.3f}")
+    emit()
+    emit("-" * 74)
+    emit("ORACLE UPPER BOUND  (not a result)")
+    emit("-" * 74)
+    emit(f"  confidence {best['confidence']:.3f}, chosen by maximising F1 on the")
+    emit("  test set itself, so it is not achievable without already knowing the")
+    emit("  answer. Reported only as a ceiling and as a measure of how sensitive")
+    emit("  this model is to its threshold.")
+    emit(f"    detection {best['ewaste_detection_rate']:.1%}, "
+         f"false alarms {best['organic_FP_rate']:.1%}, F1 {best['f1']:.3f}")
     if at_synth is not None:
-        emit(f"  Synthetic optimum, confidence {synth_conf:.3f}"
-             f" (F1 {synth.get('best_f1', float('nan')):.3f} on synthetic data)")
-        emit(f"    carried onto real data at {at_synth['confidence']:.3f}: "
-             f"detection {at_synth['ewaste_detection_rate']:.1%}, "
-             f"FP {at_synth['organic_FP_rate']:.1%}, "
-             f"F1 {at_synth['f1']:.3f}")
-    emit(f"  Real optimum, confidence {best['confidence']:.3f}"
-         f"  (fine search, step {FINE_STEP})")
-    emit(f"    detection {best['ewaste_detection_rate']:.1%} "
-         f"({best['ewaste_imgs_detected']} of {n_ew})"
-         f"   95% CI [{best['detect_ci_low']:.1%}, {best['detect_ci_high']:.1%}]")
-    emit(f"    false alarms {best['organic_FP_rate']:.1%} "
-         f"({best['organic_imgs_with_FP']} of {n_org})"
-         f"   95% CI [{best['fp_ci_low']:.1%}, {best['fp_ci_high']:.1%}]")
-    emit(f"    F1 {best['f1']:.3f}")
+        gap = best["f1"] - at_synth["f1"]
+        emit(f"    optimism over the reported point: {gap:+.3f} F1")
+        if gap > 0.03:
+            emit("    NOTE: a gap this large means most of the tuned figure is")
+            emit("    threshold selection rather than detector quality.")
     emit()
     emit("  Intervals are Wilson score, 95%. A difference between two models")
     emit("  smaller than these intervals is not resolvable from one run each.")
@@ -440,7 +460,7 @@ def main():
     emit()
     emit("=" * 74)
 
-    fp_conf = best["confidence"]
+    fp_conf = headline["confidence"]
     n_fp = save_worst(org_det, fp_conf, out / "false_positives")
     emit(f"\nSaved up to {SAVE_WORST} worst false positives at conf {fp_conf:.2f}")
     emit(f"({n_fp} held-out organic images fired) -> {out.name}/false_positives")
@@ -451,7 +471,9 @@ def main():
         "n_organic_test": n_org,
         "n_ewaste_test": n_ew,
         "synthetic": synth,
-        "real_best": best,                    # fine search, with Wilson CIs
+        "headline": headline,                 # what the paper should quote
+        "headline_source": headline_source,
+        "real_best": best,                    # oracle: tuned on the test set
         "real_best_coarse_grid": best_coarse,  # what earlier runs reported
         "real_at_synthetic_conf": at_synth,
         "capacity": capacity,

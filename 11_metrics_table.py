@@ -11,6 +11,13 @@ FLOPs under the EDNet environment, which has no thop, or mIoU before the test
 photographs have been annotated -- is printed as a dash. It is never filled in
 with a plausible-looking number.
 
+Every rate in this table is taken at the operating point chosen on held-out
+data, never at the threshold that happens to maximise F1 on the test set.
+Selecting a threshold on the same data it is then scored against is optimistic
+by construction, and measured across these architectures the gap reached
++0.070 F1 on one of them. The tuned figure is carried as a separate "Oracle"
+column so the distance between the two stays visible.
+
 Detection rate and false-alarm rate lead the table. Precision and F1 follow,
 but both depend on the 400:747 ratio of positives to negatives in the test
 split, which is an artefact of how the split was drawn rather than a
@@ -50,6 +57,7 @@ COLUMNS = [
     ("Prec", "precision", "{:.3f}"),
     ("Rec", "recall", "{:.3f}"),
     ("F1", "f1", "{:.3f}"),
+    ("Oracle Det %", "oracle_detect", "{:.1f}"),
     ("mIoU", "miou", "{:.3f}"),
     ("Dice", "dice", "{:.3f}"),
     ("ms", "latency_ms", "{:.1f}"),
@@ -79,7 +87,14 @@ def collect(pool, label, suffix):
     synth = summary.get("synthetic") or {}
     cap = summary.get("capacity") or {}
     loc = summary.get("localisation") or {}
-    best = summary.get("real_best") or {}
+    # The reported point: chosen on held-out data. Older summaries predate the
+    # split and carry only real_at_synthetic_conf; ones older still have
+    # neither, and fall back to the tuned figure with the oracle column left
+    # equal to it, which makes the substitution visible rather than silent.
+    oracle = summary.get("real_best") or {}
+    best = (summary.get("headline")
+            or summary.get("real_at_synthetic_conf")
+            or oracle)
 
     params = cap.get("n_params")
     train_s = synth.get("train_seconds")
@@ -95,6 +110,8 @@ def collect(pool, label, suffix):
         "precision": best.get("precision"),
         "recall": best.get("recall"),
         "f1": best.get("f1"),
+        "oracle_detect": (oracle.get("ewaste_detection_rate") * 100
+                          if oracle.get("ewaste_detection_rate") is not None else None),
         "miou": loc.get("mIoU"),
         "dice": loc.get("dice"),
         "latency_ms": cap.get("latency_ms"),
@@ -152,6 +169,12 @@ def main():
             print("  mIoU/Dice need hand-drawn boxes -> python 09_annotate.py")
         if "GFLOPs" in gaps:
             print("  GFLOPs are unavailable where thop is not installed")
+
+    print("Rates are at the operating point chosen on held-out data. "
+          "'Oracle Det %' is the")
+    print("detection rate at the threshold that maximises F1 on the test set: "
+          "an upper")
+    print("bound that assumes the answer is already known, not an achievable result.")
 
     OUT.mkdir(parents=True, exist_ok=True)
 

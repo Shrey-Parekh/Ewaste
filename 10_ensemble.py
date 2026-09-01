@@ -37,7 +37,9 @@ import importlib.util
 import json
 
 import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
-from lib_metrics import measure_latency
+from lib_metrics import best_box_f1, measure_latency
+from PIL import Image
+
 from pipeline_common import load_image
 
 ROOT = Path(__file__).parent
@@ -56,6 +58,62 @@ MEMBERS = [
 IOU_THR = 0.55          # cluster membership, the WBF paper's default
 LATENCY_WARMUP = 10
 LATENCY_SAMPLE = 100
+
+
+def synthetic_val(pool):
+    """Synthetic validation images and their ground-truth boxes, in pixel xyxy."""
+    d = ROOT / f"dataset_pool{pool}"
+    out = []
+    for img in sorted((d / "images" / "val").glob("*.jpg")):
+        lab = d / "labels" / "val" / f"{img.stem}.txt"
+        with Image.open(img) as im:
+            w, h = im.size
+        boxes = []
+        if lab.exists():
+            for line in lab.read_text(encoding="utf-8").splitlines():
+                parts = line.split()
+                if len(parts) != 5:
+                    continue
+                _, cx, cy, bw, bh = (float(v) for v in parts)
+                boxes.append([(cx - bw / 2) * w, (cy - bh / 2) * h,
+                              (cx + bw / 2) * w, (cy + bh / 2) * h])
+        out.append((img, boxes))
+    return out
+
+
+def ensemble_threshold(models, pool, ev, n_models):
+    """
+    Pick the ensemble's operating threshold on the synthetic validation split.
+
+    Every single model gets its threshold from a box-level F1 curve over this
+    same split, computed by Ultralytics. A fused detector has no such curve, so
+    without this its threshold would have to come from the test set -- exactly
+    the optimism the single models avoid. Choosing it here keeps the ensemble
+    honest and comparable with its own members.
+    """
+    rows = synthetic_val(pool)
+    if not rows:
+        return None, None
+    print(f"  choosing threshold on {len(rows)} synthetic validation images")
+    per_image = []
+    for i in range(0, len(rows), 16):
+        chunk = rows[i:i + 16]
+        images = [load_image(pth) for pth, _ in chunk]
+        per_model = []
+        for m in models:
+            res = m.predict(images, conf=min(ev.THRESHOLDS), imgsz=ev.IMG_SIZE,
+                            device=ev.DEVICE, verbose=False)
+            per_model.append([
+                (r.boxes.conf.cpu().numpy().tolist() if r.boxes is not None else [],
+                 r.boxes.xyxy.cpu().numpy().tolist() if r.boxes is not None else [])
+                for r in res])
+        for j, (_, gt) in enumerate(chunk):
+            confs, boxes = fuse([pm[j] for pm in per_model], n_models)
+            per_image.append((confs, boxes, gt))
+    lo, hi = min(ev.THRESHOLDS), max(ev.THRESHOLDS)
+    steps = int(round((hi - lo) / ev.FINE_STEP)) + 1
+    grid = [lo + k * ev.FINE_STEP for k in range(steps)]
+    return best_box_f1(per_image, grid)
 
 
 def load_evaluator():
@@ -199,7 +257,17 @@ def main():
 
     best = max(fine_rows, key=lambda r: r["f1"])
     best_coarse = max(rows, key=lambda r: r["f1"])
-    localisation = ev.localisation_at(ew_det, truth, best["confidence"])
+
+    print()
+    print("=== choosing the operating threshold on held-out synthetic data ===")
+    synth_conf, synth_f1 = ensemble_threshold(models, args.pool, ev, n)
+    if synth_conf is not None:
+        headline = min(fine_rows, key=lambda r: abs(r["confidence"] - synth_conf))
+        headline_source = "synthetic validation"
+        print(f"  threshold {synth_conf:.3f} (box F1 {synth_f1:.3f} on synthetic val)")
+    else:
+        headline, headline_source = best, "TEST SET -- no synthetic split found"
+    localisation = ev.localisation_at(ew_det, truth, headline["confidence"])
 
     for name, data in (("threshold_sweep.csv", rows),
                        ("threshold_sweep_fine.csv", fine_rows)):
@@ -242,16 +310,24 @@ def main():
              f"| {r['f1']:>6.3f}{star}")
     emit()
     emit("-" * 74)
-    emit("OPERATING POINT")
+    emit("OPERATING POINT  <-- report these numbers")
     emit("-" * 74)
-    emit(f"  confidence {best['confidence']:.3f}  (fine search, step {ev.FINE_STEP})")
-    emit(f"    detection {best['ewaste_detection_rate']:.1%} "
-         f"({best['ewaste_imgs_detected']} of {n_ew})"
-         f"   95% CI [{best['detect_ci_low']:.1%}, {best['detect_ci_high']:.1%}]")
-    emit(f"    false alarms {best['organic_FP_rate']:.1%} "
-         f"({best['organic_imgs_with_FP']} of {n_org})"
-         f"   95% CI [{best['fp_ci_low']:.1%}, {best['fp_ci_high']:.1%}]")
-    emit(f"    F1 {best['f1']:.3f}")
+    emit(f"  confidence {headline['confidence']:.3f}, chosen on {headline_source}")
+    emit(f"    detection {headline['ewaste_detection_rate']:.1%} "
+         f"({headline['ewaste_imgs_detected']} of {n_ew})"
+         f"   95% CI [{headline['detect_ci_low']:.1%}, {headline['detect_ci_high']:.1%}]")
+    emit(f"    false alarms {headline['organic_FP_rate']:.1%} "
+         f"({headline['organic_imgs_with_FP']} of {n_org})"
+         f"   95% CI [{headline['fp_ci_low']:.1%}, {headline['fp_ci_high']:.1%}]")
+    emit(f"    F1 {headline['f1']:.3f}")
+    emit()
+    emit("-" * 74)
+    emit("ORACLE UPPER BOUND  (not a result)")
+    emit("-" * 74)
+    emit(f"  confidence {best['confidence']:.3f}, maximising F1 on the test set")
+    emit(f"    detection {best['ewaste_detection_rate']:.1%}, "
+         f"false alarms {best['organic_FP_rate']:.1%}, F1 {best['f1']:.3f}")
+    emit(f"    optimism over the reported point: {best['f1'] - headline['f1']:+.3f} F1")
     emit()
     emit("  WBF rescales a cluster's confidence by the fraction of models that")
     emit("  found it, so this confidence is not on the same scale as a single")
@@ -282,7 +358,7 @@ def main():
         emit(f"  mIoU {localisation['mIoU']:.4f}    Dice {localisation['dice']:.4f}")
     emit("=" * 74)
 
-    n_fp = ev.save_worst(org_det, best["confidence"], out / "false_positives")
+    n_fp = ev.save_worst(org_det, headline["confidence"], out / "false_positives")
     emit(f"\n({n_fp} held-out organic images fired) -> {out.name}/false_positives")
 
     summary = {
@@ -293,6 +369,9 @@ def main():
         "fusion_iou": IOU_THR,
         "n_organic_test": n_org,
         "n_ewaste_test": n_ew,
+        "headline": headline,
+        "headline_source": headline_source,
+        "synthetic_threshold": synth_conf,
         "real_best": best,
         "real_best_coarse_grid": best_coarse,
         "capacity": capacity,
