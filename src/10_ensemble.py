@@ -49,8 +49,12 @@ MEMBERS = [
     ("YOLOv11s", "yolo11s"),
     ("YOLOv8s+CBAM", "v8s_cbam"),
     ("YOLOv11s+CBAM", "v11s_cbam"),
-    ("ResNet34+FPN+CBAM", "r34_fpn_cbam"),
-    ("ResNet34+BiFPN+CBAM", "r34_bifpn_cbam"),
+    ("ResNet18+FPN+CBAM", "r18_fpn_cbam"),
+    ("ResNet18+BiFPN+CBAM", "r18_bifpn_cbam"),
+    ("GoogLeNet+FPN+CBAM", "gnet_fpn_cbam"),
+    ("GoogLeNet+BiFPN+CBAM", "gnet_bifpn_cbam"),
+    ("EfficientNet+FPN+CBAM", "effnet_fpn_cbam"),
+    ("EfficientNet+BiFPN+CBAM", "effnet_bifpn_cbam"),
     ("YOLOv11s+BiFPN+CBAM", "v11s_bifpn_cbam"),
 ]
 

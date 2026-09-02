@@ -106,8 +106,14 @@ WARMUP_FREEZE = {
     "yolov8s-cbam": 22,
     "yolo11s-cbam": 23,
     "yolo11s-bifpn-cbam": 11,
-    "resnet34-fpn-cbam": 1,
-    "resnet34-bifpn-cbam": 1,
+    # Every torchvision backbone arrives as a single TVBackbone layer at index
+    # 0, so one frozen layer is the whole pretrained part of those networks.
+    "resnet18-fpn-cbam": 1,
+    "resnet18-bifpn-cbam": 1,
+    "googlenet-fpn-cbam": 1,
+    "googlenet-bifpn-cbam": 1,
+    "efficientnet-fpn-cbam": 1,
+    "efficientnet-bifpn-cbam": 1,
 }
 
 
