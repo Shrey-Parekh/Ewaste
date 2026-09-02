@@ -1,7 +1,7 @@
-"""
+﻿"""
 10_ensemble.py
 --------------
-Fuses the seven single-model detectors and scores the result on the same two
+Fuses all eleven single-model detectors and scores the result on the same two
 sets of real photographs, by the same rules, as 06_evaluate.py.
 
 Combination is weighted box fusion (Solovyev et al. 2021). Unlike NMS, which
@@ -166,7 +166,10 @@ def member_weights(members, pool, power):
         if not p.exists():
             return None, f"{p.parent.parent.name} has no synthetic_summary.json"
         f1 = json.loads(p.read_text(encoding="utf-8")).get("best_f1")
-        if not f1:
+        # `is None`, not falsiness: a run that collapsed to F1 0.0 validated
+        # and should be weighted at zero, which is a different thing from a
+        # summary that never recorded the number at all.
+        if f1 is None:
             return None, f"{p.parent.parent.name} recorded no validation F1"
         f1s.append(float(f1))
 
@@ -197,6 +200,39 @@ def fuse(per_model, weights, iou_thr=IOU_THR):
         entries.extend((c, b, idx) for c, b in zip(confs, boxes))
     entries.sort(key=lambda e: -e[0])
 
+    def collapse(members):
+        """
+        Reduce a cluster to one opinion per model, then combine those.
+
+        A model that puts two overlapping boxes into the same cluster must not
+        thereby count twice. Its weight expresses how much the model is
+        trusted, so it belongs to the model, not to each box the model happens
+        to emit; summing it per box let a member buy influence simply by
+        firing twice, measured at about 5% for a single duplicate.
+
+        So each model is first collapsed to its own confidence-weighted box and
+        its mean confidence, and only then are models combined by weight. Where
+        every model contributes at most one box, which is the ordinary case,
+        this is arithmetically identical to averaging over boxes.
+        """
+        per_model = {}
+        for conf, box, idx in members:
+            per_model.setdefault(idx, []).append((conf, box))
+
+        num, den, wsum, wcsum = [0.0] * 4, 0.0, 0.0, 0.0
+        for idx, items in per_model.items():
+            w = weights[idx]
+            c_m = sum(c for c, _ in items) / len(items)
+            t = sum(c for c, _ in items) or 1e-9
+            b_m = [sum(c * b[k] for c, b in items) / t for k in range(4)]
+            for k in range(4):
+                num[k] += w * c_m * b_m[k]
+            den += w * c_m
+            wsum += w
+            wcsum += w * c_m
+        den = den or 1e-9
+        return [n / den for n in num], wcsum / (wsum or 1e-9), wsum
+
     clusters = []
     for conf, box, idx in entries:
         best, best_iou = None, iou_thr
@@ -208,21 +244,14 @@ def fuse(per_model, weights, iou_thr=IOU_THR):
             clusters.append({"box": list(box), "members": [(conf, box, idx)]})
             continue
         best["members"].append((conf, box, idx))
-        total = sum(m[0] * weights[m[2]] for m in best["members"]) or 1e-9
-        best["box"] = [
-            sum(m[0] * weights[m[2]] * m[1][k] for m in best["members"]) / total
-            for k in range(4)
-        ]
+        best["box"], _, _ = collapse(best["members"])
 
     out_confs, out_boxes = [], []
     for c in clusters:
-        mem = c["members"]
-        wsum = sum(weights[m[2]] for m in mem) or 1e-9
-        score = sum(m[0] * weights[m[2]] for m in mem) / wsum
+        box, score, wsum = collapse(c["members"])
         # agreement, measured by weight rather than by head count
-        agree = sum(weights[i] for i in {m[2] for m in mem}) / w_total
-        out_confs.append(score * agree)
-        out_boxes.append(c["box"])
+        out_confs.append(score * (wsum / w_total))
+        out_boxes.append(box)
     return out_confs, out_boxes
 
 
