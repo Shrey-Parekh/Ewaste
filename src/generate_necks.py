@@ -1,29 +1,41 @@
 """
 src/generate_necks.py
-------------------------
-Emits the three neck-based architecture configurations.
+---------------------
+Emits the backbone-and-neck architecture configurations.
 
-They are generated rather than hand-written because their neck width and depth
-are experimental variables, not constants, and because the FPN and BiFPN arms
-have to stay matched. Editing three files by hand to change one number is how
-two necks quietly drift apart and the comparison between them stops meaning
-anything.
+Three backbones, each paired with both necks, plus the BiFPN variant of
+YOLO11s: seven files in all. They are generated rather than hand-written
+because their neck width and depth are experimental variables, not constants,
+and because every pair has to stay matched. Editing seven files by hand to
+change one number is how two arms quietly drift apart and the comparison
+between them stops meaning anything.
 
-What is held equal between resnet34-fpn-cbam and resnet34-bifpn-cbam:
+What is held equal between a backbone's FPN arm and its BiFPN arm:
 
-  * the same ResNet34 backbone
+  * the same backbone
   * the same neck width
   * the same number of neck passes
   * the same CBAM block on each level entering the head
 
 so the only difference left is the fusion topology: a top-down pyramid against
-bidirectional flow with learnable weights and an input-to-output skip. That is
-the question models 5 and 6 exist to answer, and it is only answerable while
-everything else matches.
+bidirectional flow with learnable weights and an input-to-output skip. The
+repeat count applies to both necks for that reason -- giving BiFPN more passes
+than FPN would confound the topology it is meant to test with plain depth.
 
-The repeat count applies to both necks for that reason. Giving BiFPN more
-passes than FPN would confound the topology it is meant to test with plain
-depth.
+Backbone pyramid levels were measured, not looked up. Each backbone was run at
+640 px through TVBackbone and the last feature map at each of strides 8, 16 and
+32 was recorded. Two of those measurements settled real questions:
+
+  * Inception v3 cannot be used. Its stem convolutions are unpadded, so at
+    640 px it yields 77, 38 and 18 pixel maps -- strides of 8.31, 16.84 and
+    35.56. Upsampling its P5 by two gives 36 against a P4 of 38, so the neck
+    cannot even concatenate, and the detection head would derive fractional
+    strides. GoogLeNet, which is Inception v1, gives exactly 8, 16 and 32 and
+    is used instead.
+
+  * EfficientNet's P5 is the last block at stride 32, 320 channels, not the
+    1280-channel projection that follows it. That projection exists to feed a
+    classifier; EfficientDet takes the block outputs, and so does this.
 
 Run:  python src/generate_necks.py
       python src/generate_necks.py --width 160 --repeats 3
@@ -32,21 +44,34 @@ Run:  python src/generate_necks.py
 from pathlib import Path
 import argparse
 
-# Emits into models/ at the project root, not beside this file.
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "models"
 
-# A torchvision ResNet unwrapped to its children is conv1, bn1, relu, maxpool,
-# layer1..layer4. With the input prepended by split mode, list index 6 is
-# layer2 at stride 8, 7 is layer3 at stride 16 and 8 is layer4 at stride 32.
-# ResNet34 uses BasicBlock, so those carry 128, 256 and 512 channels.
-RESNET_LEVELS = [(128, 6), (256, 7), (512, 8)]
+# name -> torchvision model, and the (channels, split index) of P3, P4, P5.
+# Indices are into the list TVBackbone returns, whose entry 0 is the input.
+BACKBONES = {
+    "resnet18": {
+        "tv": "resnet18",
+        "label": "ResNet18",
+        "levels": [(128, 6), (256, 7), (512, 8)],
+    },
+    "googlenet": {
+        "tv": "googlenet",
+        "label": "GoogLeNet (Inception v1)",
+        "levels": [(480, 7), (832, 13), (1024, 16)],
+    },
+    "efficientnet": {
+        "tv": "efficientnet_b0",
+        "label": "EfficientNet-B0",
+        "levels": [(40, 4), (112, 6), (320, 8)],
+    },
+}
 
-# YOLO11s backbone at its own scale, written out literally so that every number
-# in the generated file means the same thing. The scales block is the identity
-# for the same reason: the parser scales the arguments of stock modules but
-# passes those of CBAM, BiFPNFuse and Index through untouched, and two
-# conventions in one file is a trap.
+# YOLO11s backbone at its own scale, written out literally so every number in
+# the generated file means the same thing. The scales block is the identity for
+# the same reason: the parser scales the arguments of stock modules but passes
+# those of CBAM, BiFPNFuse and Index through untouched, and two conventions in
+# one file is a trap.
 YOLO11S_BACKBONE = [
     ("Conv", "[32, 3, 2]", "P1/2"),
     ("Conv", "[64, 3, 2]", "P2/4"),
@@ -113,19 +138,22 @@ def fpn_pass(L, p3, p4, p5, w, tag):
     return p3_out, p4_out, p5
 
 
-def build(kind, width, repeats):
-    is_resnet = kind.startswith("resnet34")
+def build(backbone, neck, width, repeats):
+    """backbone is a key of BACKBONES, or 'yolo11s'. neck is 'fpn' or 'bifpn'."""
+    is_yolo = backbone == "yolo11s"
+    spec = None if is_yolo else BACKBONES[backbone]
     L = Layers()
 
-    if is_resnet:
-        L.add(-1, "TorchVision", "[512, resnet34, DEFAULT, True, 2, True]", "backbone")
-        levels = [L.add(0, "Index", f"[{c}, {i}]", f"P{n + 3}/{8 * 2 ** n}")
-                  for n, (c, i) in enumerate(RESNET_LEVELS)]
-        p3, p4, p5 = levels
-    else:
+    if is_yolo:
         for mod, args, note in YOLO11S_BACKBONE:
             L.add(-1, mod, args, note)
         p3, p4, p5 = YOLO11S_LEVELS
+    else:
+        L.add(-1, "TVBackbone", f"[512, {spec['tv']}, 2]", "backbone")
+        p3, p4, p5 = [
+            L.add(0, "Index", f"[{c}, {i}]", f"P{n + 3}/{8 * 2 ** n}")
+            for n, (c, i) in enumerate(spec["levels"])
+        ]
     backbone_lines = list(L.lines)
 
     # lateral 1x1 projections bring every level to the common neck width
@@ -133,7 +161,7 @@ def build(kind, width, repeats):
     p4 = L.add(p4, "Conv", f"[{width}, 1, 1]", "P4 lateral")
     p5 = L.add(p5, "Conv", f"[{width}, 1, 1]", "P5 lateral")
 
-    step = bifpn_pass if "bifpn" in kind else fpn_pass
+    step = bifpn_pass if neck == "bifpn" else fpn_pass
     for r in range(repeats):
         p3, p4, p5 = step(L, p3, p4, p5, width, f"(pass {r + 1})")
 
@@ -143,12 +171,12 @@ def build(kind, width, repeats):
     L.add(f"[{a3}, {a4}, {a5}]", "Detect", "[nc]")
     head_lines = L.lines[len(backbone_lines):]
 
-    neck = "BiFPN" if "bifpn" in kind else "FPN"
-    other = "FPN" if neck == "BiFPN" else "BiFPN"
-    back = "ResNet34" if is_resnet else "YOLO11s"
+    neck_label = "BiFPN" if neck == "bifpn" else "FPN"
+    other = "FPN" if neck == "bifpn" else "BiFPN"
+    back_label = "YOLO11s" if is_yolo else spec["label"]
 
     out = [
-        f"# {back} + {neck} + CBAM",
+        f"# {back_label} + {neck_label} + CBAM",
         "#",
         "# GENERATED by src/generate_necks.py -- do not edit by hand.",
         f"# Neck width {width}, {repeats} neck pass(es).",
@@ -156,25 +184,29 @@ def build(kind, width, repeats):
         f"# Width and pass count are shared with the matching {other} configuration,",
         "# so the only difference between those two arms is the fusion topology.",
         "#",
-        "# CBAM here is the open-gate variant bound in lib_modules.py: its gates",
+        "# CBAM here is the open-gate variant bound in src/lib_modules.py: its gates",
         "# start uniform and open rather than as a random mask, so appending it to a",
         "# pretrained network does not corrupt the features on the first forward pass.",
     ]
-    if is_resnet:
-        out += [
-            "#",
-            "# The backbone arrives with ImageNet weights inside the TorchVision layer.",
-            "# Everything after it is new, which is what the warm-up phase in",
-            "# 05_train.py exists to settle.",
-        ]
-    else:
+    if is_yolo:
         out += [
             "#",
             "# Replacing the neck discards its COCO weights; only the backbone, layers",
             "# 0-10, is inherited.",
         ]
+    else:
+        levels = ", ".join(f"{c}ch at index {i}" for c, i in spec["levels"])
+        out += [
+            "#",
+            f"# Backbone is torchvision {spec['tv']} with ImageNet weights, taken through",
+            "# TVBackbone so its classifier head, and any auxiliary classifier branch,",
+            "# are removed before the children are run as a sequence.",
+            f"# Pyramid levels, measured at 640 px: {levels}.",
+            "# Everything after the backbone is new, which is what the warm-up phase in",
+            "# src/05_train.py exists to settle.",
+        ]
     out += ["", "nc: 1", ""]
-    if not is_resnet:
+    if is_yolo:
         out += ["scales:",
                 "  # [depth, width, max_channels] -- identity; channels below are literal",
                 "  s: [1.0, 1.0, 1024]", ""]
@@ -186,15 +218,20 @@ def build(kind, width, repeats):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--width", type=int, default=128,
-                    help="common neck width, applied to both FPN and BiFPN")
+                    help="common neck width, applied to every arm")
     ap.add_argument("--repeats", type=int, default=2,
                     help="neck passes, applied to both necks so depth stays matched")
     args = ap.parse_args()
 
-    for kind in ("resnet34-fpn-cbam", "resnet34-bifpn-cbam", "yolo11s-bifpn-cbam"):
-        (OUT / f"{kind}.yaml").write_text(build(kind, args.width, args.repeats),
-                                           encoding="utf-8")
-        print(f"wrote {kind}.yaml  (width {args.width}, {args.repeats} pass(es))")
+    OUT.mkdir(parents=True, exist_ok=True)
+    targets = [(b, n) for b in BACKBONES for n in ("fpn", "bifpn")]
+    targets.append(("yolo11s", "bifpn"))
+
+    for backbone, neck in targets:
+        name = f"{backbone}-{neck}-cbam"
+        (OUT / f"{name}.yaml").write_text(build(backbone, neck, args.width, args.repeats),
+                                          encoding="utf-8")
+        print(f"wrote {name}.yaml  (width {args.width}, {args.repeats} pass(es))")
 
 
 if __name__ == "__main__":

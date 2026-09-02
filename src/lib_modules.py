@@ -110,6 +110,58 @@ class CBAMOpenGate(CBAM):
 # The model YAMLs say CBAM; this is what they get. The open-gate variant is
 # the only initialisation this project wants, so it is bound under that name
 # rather than offered as an alternative someone has to remember to select.
+
+class TVBackbone(nn.Module):
+    """
+    A torchvision classifier used as a detection backbone, returned as the list
+    of its intermediate feature maps.
+
+    Ultralytics ships a TorchVision wrapper that does almost exactly this, and
+    it is what the ResNet configurations originally used. It cannot be used for
+    every backbone in this study, because it offers no way to build a model
+    with its auxiliary classifier removed.
+
+    That matters for the Inception family. GoogLeNet registers two auxiliary
+    classifier branches partway through its children, and unwrapping a model
+    into a plain sequence runs every child in order -- so those branches turn a
+    feature map into a 1000-element class vector and hand it to the next
+    convolution, which fails immediately. Assigning them None drops them from
+    the module registry, so they never appear in children() and the sequence
+    stays convolutional throughout.
+
+    The unwrapping otherwise follows Ultralytics' own, including its second
+    level descent: EfficientNet keeps its blocks inside a single `features`
+    Sequential, so without that step truncation would remove the entire
+    backbone rather than the classifier head.
+
+    Args are (declared width, torchvision model name, layers to truncate). The
+    declared width is not read -- each level's real width is stated by the
+    Index layer that selects it -- but it keeps these entries readable next to
+    the rest of the configuration.
+    """
+
+    def __init__(self, c1, model, truncate=2, weights="DEFAULT"):
+        super().__init__()
+        import torchvision
+
+        net = torchvision.models.get_model(model, weights=weights)
+        for attr in ("AuxLogits", "aux1", "aux2"):
+            if getattr(net, attr, None) is not None:
+                setattr(net, attr, None)
+        if hasattr(net, "aux_logits"):
+            net.aux_logits = False
+
+        layers = list(net.children())
+        if isinstance(layers[0], nn.Sequential):
+            layers = [*list(layers[0].children()), *layers[1:]]
+        self.m = nn.Sequential(*layers[:-truncate])
+
+    def forward(self, x):
+        y = [x]
+        y.extend(m(y[-1]) for m in self.m)
+        return y
+
 tasks.CBAM = CBAMOpenGate
 tasks.CBAMOpenGate = CBAMOpenGate
 tasks.BiFPNFuse = BiFPNFuse
+tasks.TVBackbone = TVBackbone
