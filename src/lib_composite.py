@@ -32,7 +32,11 @@ import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter, ImageDraw
 
 # ------------------------- CONFIG -------------------------
-ROOT         = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 EWASTE_CUTS  = ROOT / "cutouts" / "ewaste"
 ORGANIC_CUTS = ROOT / "cutouts" / "organic"
 RAW_ORGANIC  = ROOT / "raw" / "organic"

@@ -37,7 +37,11 @@ from PIL import Image
 
 from pipeline_common import load_image
 
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 
 # (label, run-directory suffix). The empty suffix is the plain YOLOv8s run.
 MEMBERS = [
@@ -114,7 +118,7 @@ def ensemble_threshold(models, pool, ev, n_models):
 def load_evaluator():
     """Import 06_evaluate.py by path; its name is not a valid identifier."""
     spec = importlib.util.spec_from_file_location(
-        "evaluate_single", ROOT / "06_evaluate.py")
+        "evaluate_single", SRC / "06_evaluate.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

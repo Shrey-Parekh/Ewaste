@@ -99,24 +99,24 @@ Scripts run in numeric order. `lib_*.py` are libraries, not steps.
 
 | File | Role |
 |---|---|
-| `01_build_splits.py` | Partitions sources into disjoint manifests in `splits/` |
-| `02_make_cutouts.py` | Segments e-waste objects + organic occluders → transparent PNGs |
-| `03_screen_cutouts.py` | Auto-rejects bad mattes → final object pool |
-| `04_build_dataset.py` | Composites objects onto backgrounds → synthetic training set |
-| `05_train.py` | Trains a YOLO detector (`--model`, `--tag`) |
-| `06_evaluate.py` | Scores a detector on real photographs |
-| `07_make_figures.py` | Manuscript figures |
-| `08_verify_integrity.py` | Asserts no training photo leaked into evaluation |
-| `lib_segment.py` | Segmentation algorithm — imported by `02`, refuses standalone run |
-| `lib_composite.py` | Compositing algorithm — imported by `04`, refuses standalone run |
-| `09_annotate.py` | One-off manual pass: hand-draws boxes on the 400 e-waste test photographs |
-| `10_ensemble.py` | Weighted box fusion over the seven detectors, scored like `06` |
-| `11_metrics_table.py` | Collects every evaluated model into one CSV + LaTeX table |
-| `lib_modules.py` | BiFPN node + CBAM/BiFPN registration with the YAML parser |
-| `lib_metrics.py` | Capacity, cost and localisation metrics |
-| `pipeline_common.py` | Operating-point logic and the defensive image decoder |
+| `src/01_build_splits.py` | Partitions sources into disjoint manifests in `splits/` |
+| `src/02_make_cutouts.py` | Segments e-waste objects + organic occluders → transparent PNGs |
+| `src/03_screen_cutouts.py` | Auto-rejects bad mattes → final object pool |
+| `src/04_build_dataset.py` | Composites objects onto backgrounds → synthetic training set |
+| `src/05_train.py` | Trains a YOLO detector (`--model`, `--tag`) |
+| `src/06_evaluate.py` | Scores a detector on real photographs |
+| `src/07_make_figures.py` | Manuscript figures |
+| `src/08_verify_integrity.py` | Asserts no training photo leaked into evaluation |
+| `src/lib_segment.py` | Segmentation algorithm — imported by `02`, refuses standalone run |
+| `src/lib_composite.py` | Compositing algorithm — imported by `04`, refuses standalone run |
+| `src/09_annotate.py` | One-off manual pass: hand-draws boxes on the 400 e-waste test photographs |
+| `src/10_ensemble.py` | Weighted box fusion over the seven detectors, scored like `06` |
+| `src/11_metrics_table.py` | Collects every evaluated model into one CSV + LaTeX table |
+| `src/lib_modules.py` | BiFPN node + CBAM/BiFPN registration with the YAML parser |
+| `src/lib_metrics.py` | Capacity, cost and localisation metrics |
+| `src/pipeline_common.py` | Operating-point logic and the defensive image decoder |
 
-`lib_segment.py` and `lib_composite.py` deliberately raise `SystemExit` if run
+`src/lib_segment.py` and `src/lib_composite.py` deliberately raise `SystemExit` if run
 directly: their module-level defaults point at the whole of `raw/`, ignoring
 the split manifests, which is exactly the train/test leak the manifests exist
 to prevent.
@@ -124,16 +124,16 @@ to prevent.
 ### Run order
 
 ```bash
-python 01_build_splits.py
-python 02_make_cutouts.py
-python 03_screen_cutouts.py
-python 04_build_dataset.py --pool 60
+python src/01_build_splits.py
+python src/02_make_cutouts.py
+python src/03_screen_cutouts.py
+python src/04_build_dataset.py --pool 60
 
-python 05_train.py --pool 60 --model yolov8s.pt
-python 06_evaluate.py --pool 60
+python src/05_train.py --pool 60 --model yolov8s.pt
+python src/06_evaluate.py --pool 60
 
-python 05_train.py --pool 60 --model yolo11s.pt --tag yolo11s
-python 06_evaluate.py --pool 60 --tag yolo11s
+python src/05_train.py --pool 60 --model yolo11s.pt --tag yolo11s
+python src/06_evaluate.py --pool 60 --tag yolo11s
 ```
 
 `--pool 60` selects `dataset_pool60/`; it is **not** a free parameter, it must
@@ -205,9 +205,9 @@ produces.
 | 3 | Precision | Recorded |
 | 4 | Recall | Recorded |
 | 5 | F1-score | Recorded |
-| 6 | mIoU | Implemented; needs `09_annotate.py` run first |
+| 6 | mIoU | Implemented; needs `src/09_annotate.py` run first |
 | 7 | Dice coefficient | Implemented; same dependency |
-| 8 | Inference time | Implemented (`06_evaluate.py`, batch 1, real photographs) |
+| 8 | Inference time | Implemented (`src/06_evaluate.py`, batch 1, real photographs) |
 | 9 | FPS | Implemented (derives from 8) |
 | 10 | Parameter count | Persisted |
 | 11 | FLOPs | Persisted; unavailable where thop is not installed |
@@ -220,7 +220,7 @@ it was asked for, and that relationship is stated wherever it appears.
 
 `synthetic_summary.json` now also carries `n_params`, `gflops`,
 `model_size_mb`, `batch` and `pretrained_from`. Latency and FPS are measured on
-real photographs by `06_evaluate.py` into `summary.json` under `capacity`;
+real photographs by `src/06_evaluate.py` into `summary.json` under `capacity`;
 mIoU and Dice land under `localisation`.
 
 ### 5.2 Models — 8 total
@@ -234,7 +234,7 @@ mIoU and Dice land under `localisation`.
 | 5 | ResNet34 + FPN + CBAM | Built, `models/resnet34-fpn-cbam.yaml`, tag `r34_fpn_cbam` |
 | 6 | ResNet34 + BiFPN + CBAM | Built, `models/resnet34-bifpn-cbam.yaml`, tag `r34_bifpn_cbam` |
 | 7 | YOLOv11s + BiFPN + CBAM | Built, `models/yolo11s-bifpn-cbam.yaml`, tag `v11s_bifpn_cbam` |
-| 8 | Ensemble | Built, `10_ensemble.py`, WBF over models 1-7 |
+| 8 | Ensemble | Built, `src/10_ensemble.py`, WBF over models 1-7 |
 
 All five configurations were verified to build, forward-pass at stride
 [8, 16, 32], and load their pretrained weights. Models 1 and 2 are unchanged
@@ -247,7 +247,7 @@ the earlier estimate in this file. Ultralytics ships a `TorchVision` wrapper
 whose `split=True` mode returns every child module's output, so `Index` can take
 P3/P4/P5 straight out of a torchvision ResNet and the rest is an ordinary YAML.
 BiFPN genuinely is absent from Ultralytics and is implemented in
-`lib_modules.py` as a fast normalised weighted fusion node.
+`src/lib_modules.py` as a fast normalised weighted fusion node.
 
 ### 5.3 Explainable AI
 
@@ -279,7 +279,7 @@ research effort rather than an add-on.
 
 1. **Nothing is trained yet.** Eight runs plus the ensemble are queued; see
    §11 for the commands.
-2. **The 400 photographs are not annotated yet.** `09_annotate.py` exists and
+2. **The 400 photographs are not annotated yet.** `src/09_annotate.py` exists and
    resumes where it stopped; until it has been run, mIoU and Dice are the only
    two metrics the table cannot fill.
 
@@ -367,7 +367,7 @@ comparable with anything produced after them.
 
 ### Still open from the diagnostic, not yet done
 
-- **The operating threshold is tuned on the test set.** `06_evaluate.py` picks
+- **The operating threshold is tuned on the test set.** `src/06_evaluate.py` picks
   the confidence maximising F1 on the test set and reports there. Measured
   optimism is small for most arms but +0.070 F1 for YOLOv11s+BiFPN, whose
   honest detection rate at the synthetic threshold is 56.2%, not 77.5%.
@@ -383,40 +383,40 @@ comparable with anything produced after them.
 Train one model at a time; two will not fit on the card. Evaluation is
 inference-only, so it can overlap the next training if you want to.
 
-Tags are not cosmetic. `10_ensemble.py` and `11_metrics_table.py` locate run
+Tags are not cosmetic. `src/10_ensemble.py` and `src/11_metrics_table.py` locate run
 directories by them, so they must match exactly as written.
 
 ### Baselines (unchanged architectures)
 
 ```bash
-python 05_train.py    --pool 60 --model yolov8s.pt
-python 06_evaluate.py --pool 60
+python src/05_train.py    --pool 60 --model yolov8s.pt
+python src/06_evaluate.py --pool 60
 
-python 05_train.py    --pool 60 --model yolo11s.pt --tag yolo11s
-python 06_evaluate.py --pool 60 --tag yolo11s
+python src/05_train.py    --pool 60 --model yolo11s.pt --tag yolo11s
+python src/06_evaluate.py --pool 60 --tag yolo11s
 ```
 
 ### Attention variants
 
 ```bash
-python 05_train.py    --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_cbam
-python 06_evaluate.py --pool 60 --tag v8s_cbam
+python src/05_train.py    --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_cbam
+python src/06_evaluate.py --pool 60 --tag v8s_cbam
 
-python 05_train.py    --pool 60 --model models/yolo11s-cbam.yaml --tag v11s_cbam
-python 06_evaluate.py --pool 60 --tag v11s_cbam
+python src/05_train.py    --pool 60 --model models/yolo11s-cbam.yaml --tag v11s_cbam
+python src/06_evaluate.py --pool 60 --tag v11s_cbam
 ```
 
 ### New backbones and necks
 
 ```bash
-python 05_train.py    --pool 60 --model models/resnet34-fpn-cbam.yaml --tag r34_fpn_cbam
-python 06_evaluate.py --pool 60 --tag r34_fpn_cbam
+python src/05_train.py    --pool 60 --model models/resnet34-fpn-cbam.yaml --tag r34_fpn_cbam
+python src/06_evaluate.py --pool 60 --tag r34_fpn_cbam
 
-python 05_train.py    --pool 60 --model models/resnet34-bifpn-cbam.yaml --tag r34_bifpn_cbam
-python 06_evaluate.py --pool 60 --tag r34_bifpn_cbam
+python src/05_train.py    --pool 60 --model models/resnet34-bifpn-cbam.yaml --tag r34_bifpn_cbam
+python src/06_evaluate.py --pool 60 --tag r34_bifpn_cbam
 
-python 05_train.py    --pool 60 --model models/yolo11s-bifpn-cbam.yaml --tag v11s_bifpn_cbam
-python 06_evaluate.py --pool 60 --tag v11s_bifpn_cbam
+python src/05_train.py    --pool 60 --model models/yolo11s-bifpn-cbam.yaml --tag v11s_bifpn_cbam
+python src/06_evaluate.py --pool 60 --tag v11s_bifpn_cbam
 ```
 
 ### Ensemble and the metrics table
@@ -424,11 +424,11 @@ python 06_evaluate.py --pool 60 --tag v11s_bifpn_cbam
 Both need all seven single models present first.
 
 ```bash
-python 10_ensemble.py --pool 60
-python 11_metrics_table.py --pool 60
+python src/10_ensemble.py --pool 60
+python src/11_metrics_table.py --pool 60
 ```
 
-`11_metrics_table.py` can be run at any point; it prints what exists and names
+`src/11_metrics_table.py` can be run at any point; it prints what exists and names
 what is still missing.
 
 ### Annotation
@@ -437,8 +437,8 @@ Independent of training, and resumable — it opens at the first photograph
 without a label file.
 
 ```bash
-python 09_annotate.py
-python 09_annotate.py --check
+python src/09_annotate.py
+python src/09_annotate.py --check
 ```
 
 Until this has been run, mIoU and Dice are the only cells in the table that

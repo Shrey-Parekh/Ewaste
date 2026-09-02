@@ -42,7 +42,11 @@ from PIL import Image, ImageTk
 
 from pipeline_common import load_image
 
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 SPLITS = ROOT / "splits"
 OUT = ROOT / "annotations" / "ewaste_test"
 # Which photographs are in scope. Written once by --subset and then obeyed, so

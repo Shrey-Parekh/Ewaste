@@ -32,7 +32,11 @@ import lib_modules  # noqa: F401  binds CBAM and BiFPNFuse for the YAML parser
 from lib_metrics import count_gflops, count_parameters, weight_size_mb
 from pipeline_common import best_f1_point, write_f1_curve
 
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 
 # The shared schedule. Batch 16 was chosen by measuring peak VRAM for every
 # architecture in the comparison: the heaviest reaches 7.6 GiB of an 8 GiB card

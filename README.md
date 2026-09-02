@@ -20,29 +20,29 @@ Run in order. Every step is seeded, so the whole thing is reproducible.
 
 | Step | Script | Produces |
 |---|---|---|
-| 1 | `01_build_splits.py` | `splits/*.csv` — partitions both collections into disjoint roles |
-| 2 | `02_make_cutouts.py` | `cutouts/` — alpha-matted objects, plus `extraction_log.csv` |
-| 3 | `03_screen_cutouts.py` | `cutouts/ewaste_clean/` — rejects matting failures and collages |
+| 1 | `src/01_build_splits.py` | `splits/*.csv` — partitions both collections into disjoint roles |
+| 2 | `src/02_make_cutouts.py` | `cutouts/` — alpha-matted objects, plus `extraction_log.csv` |
+| 3 | `src/03_screen_cutouts.py` | `cutouts/ewaste_clean/` — rejects matting failures and collages |
 | 4 | `04_build_dataset.py --pool 60` | `dataset_pool60/` — 1500 composited images with occlusion-aware labels |
 | 5 | `05_train.py --pool 60` | `runs/detect/pool60[_tag]/` |
 | 6 | `06_evaluate.py --pool 60` | `eval_pool60[_tag]/` — sweep over the withheld real sets |
-| 7 | `07_make_figures.py` | `Manuscripts/figures/` |
+| 7 | `src/07_make_figures.py` | `Manuscripts/figures/` |
 
-`08_verify_integrity.py` audits the whole thing and can be run at any time. It
+`src/08_verify_integrity.py` audits the whole thing and can be run at any time. It
 exits non-zero if any training photograph has reached an evaluation set, so it
 can gate a rebuild:
 
 ```bash
-python 08_verify_integrity.py
+python src/08_verify_integrity.py
 ```
 
 Three further steps sit outside the numbered run order:
 
 | Script | Role |
 |---|---|
-| `09_annotate.py` | One-off manual pass: hand-draws boxes on the 400 held-out e-waste photographs, which is what makes mIoU and Dice computable |
-| `10_ensemble.py` | Fuses the seven trained detectors with weighted box fusion and scores the result |
-| `11_metrics_table.py` | Collects every evaluated model into one table, in CSV and LaTeX |
+| `src/09_annotate.py` | One-off manual pass: hand-draws boxes on the 400 held-out e-waste photographs, which is what makes mIoU and Dice computable |
+| `src/10_ensemble.py` | Fuses the seven trained detectors with weighted box fusion and scores the result |
+| `src/11_metrics_table.py` | Collects every evaluated model into one table, in CSV and LaTeX |
 
 ## The split discipline
 
@@ -74,7 +74,7 @@ line, so it is not the contamination scenario the paper targets.
 
 Eight architectures train on the identical dataset through the identical
 schedule, so only the architecture differs. That schedule lives in exactly one
-place, `TRAIN_CFG` in `05_train.py`, and nothing is set per model. Batch size
+place, `TRAIN_CFG` in `src/05_train.py`, and nothing is set per model. Batch size
 is 16 for every arm, chosen by measuring peak VRAM across all of them: the
 heaviest reaches 7.6 GiB of an 8 GiB card at batch 32, which leaves nothing for
 the desktop.
@@ -88,7 +88,7 @@ disabled with `--warmup-epochs 0`.
 The neck configurations in `models/` are generated, not hand-written:
 
 ```bash
-python models/generate_necks.py --width 128 --repeats 2
+python src/generate_necks.py --width 128 --repeats 2
 ```
 
 Width and pass count apply to the FPN and the BiFPN arms together. Those two
@@ -96,14 +96,14 @@ exist to compare fusion topology, which only works while everything else about
 them matches.
 
 ```bash
-python 05_train.py    --pool 60 --model yolov8s.pt
-python 06_evaluate.py --pool 60
+python src/05_train.py    --pool 60 --model yolov8s.pt
+python src/06_evaluate.py --pool 60
 
-python 05_train.py    --pool 60 --model yolo11s.pt --tag yolo11s
-python 06_evaluate.py --pool 60 --tag yolo11s
+python src/05_train.py    --pool 60 --model yolo11s.pt --tag yolo11s
+python src/06_evaluate.py --pool 60 --tag yolo11s
 
-python 05_train.py    --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_cbam
-python 06_evaluate.py --pool 60 --tag v8s_cbam
+python src/05_train.py    --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_cbam
+python src/06_evaluate.py --pool 60 --tag v8s_cbam
 ```
 
 ...and so on for the remaining configurations in `models/`. See
@@ -116,6 +116,7 @@ differences smaller than that should not be ranked.
 ## Layout
 
 ```
+src/            every Python file: the numbered pipeline steps and the libraries
 splits/         role manifests -- the source of truth for what may be used where
 models/         architecture configurations for the attention and BiFPN variants
 annotations/    hand-drawn boxes on the held-out e-waste photographs
@@ -136,9 +137,9 @@ by hand and cannot be regenerated.
 
 ### Library modules
 
-`lib_segment.py` and `lib_composite.py` hold the segmentation and compositing
-algorithms. They are **not pipeline steps** — `02_make_cutouts.py` and
-`04_build_dataset.py` import them by path and override their configuration
+`src/lib_segment.py` and `src/lib_composite.py` hold the segmentation and compositing
+algorithms. They are **not pipeline steps** — `src/02_make_cutouts.py` and
+`src/04_build_dataset.py` import them by path and override their configuration
 rather than duplicating the algorithms, so the two cannot drift apart. Do not
 delete them.
 
@@ -146,11 +147,11 @@ Their module-level defaults still point at the whole of `raw/`, ignoring the
 split manifests, which is why the pipeline scripts override every input path
 before calling in — and why both refuse to run standalone.
 
-`lib_modules.py` defines the BiFPN fusion node and registers it, along with
+`src/lib_modules.py` defines the BiFPN fusion node and registers it, along with
 Ultralytics' own CBAM, with the YAML parser. Anything that builds, trains or
 loads a model from `models/` must import it first, including the evaluator: a
 checkpoint containing a custom module cannot be unpickled without it.
 
-`lib_metrics.py` holds the capacity, cost and localisation measurements, and
-`pipeline_common.py` the operating-point logic and the defensive image decoder
+`src/lib_metrics.py` holds the capacity, cost and localisation measurements, and
+`src/pipeline_common.py` the operating-point logic and the defensive image decoder
 that both the evaluator and the annotator need.

@@ -32,7 +32,11 @@ import shutil
 import numpy as np
 from PIL import ImageDraw
 
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 SPLITS = ROOT / "splits"
 CUTOUTS = ROOT / "cutouts"
 BACKGROUNDS = ROOT / "backgrounds"
@@ -43,7 +47,7 @@ PREVIEW_COUNT = 12
 def _load_compositor():
     """Import lib_composite.py by path (the name is not a valid identifier)."""
     spec = importlib.util.spec_from_file_location(
-        "compositor_v2", ROOT / "lib_composite.py")
+        "compositor_v2", SRC / "lib_composite.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

@@ -9,7 +9,11 @@ from PIL import Image
 from ultralytics import YOLO
 
 # ------------------------- CONFIG -------------------------
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 CUTOUTS = ROOT / "cutouts"
 SRC = CUTOUTS / "ewaste"
 DST = CUTOUTS / "ewaste_clean"

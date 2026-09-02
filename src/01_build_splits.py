@@ -62,7 +62,11 @@ import json
 import random
 
 # ------------------------- CONFIG -------------------------
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 
 # The training pool is this hand-curated directory, taken whole. It is NOT
 # sampled from TrashBox: the selection criterion is whether a photograph still

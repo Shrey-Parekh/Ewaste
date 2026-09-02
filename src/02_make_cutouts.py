@@ -8,7 +8,11 @@ from PIL import Image, ImageOps
 from rembg import remove
 
 # ------------------------- CONFIG -------------------------
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 SPLITS = ROOT / "splits"
 OUT = ROOT / "cutouts"
 
@@ -29,7 +33,7 @@ MAX_INPUT_SIDE = 1536
 def _load_v1():
     """Import lib_segment.py by path (the name is not a valid identifier)."""
     spec = importlib.util.spec_from_file_location(
-        "make_cutouts_v1", ROOT / "lib_segment.py")
+        "make_cutouts_v1", SRC / "lib_segment.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

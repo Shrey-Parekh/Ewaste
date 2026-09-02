@@ -32,7 +32,11 @@ import argparse
 import csv
 import json
 
-ROOT = Path(__file__).parent
+# This file lives in src/; the data it reads and writes lives beside src/, not
+# inside it. SRC is used for loading sibling modules by path, ROOT for anything
+# on disk.
+SRC = Path(__file__).resolve().parent
+ROOT = SRC.parent
 OUT = ROOT / "Manuscripts" / "tables"
 
 # (label, run/eval suffix). Order is the order the paper presents them in.
