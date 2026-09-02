@@ -2,8 +2,15 @@
 # with. Recorded exactly rather than loosely so the numbers stay reproducible.
 # Python 3.13.13 on Windows 11, CUDA 12.8, single NVIDIA GeForce RTX 4060 Ti.
 #
+# torch and torchvision are the CUDA 12.8 builds. Plain `pip install` gives the
+# CPU wheels, which train but not usefully, so install those two from the CUDA
+# index first:
+#
+#   pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r requirements.txt
 
 torch==2.11.0
+torchvision==0.26.0
 ultralytics==8.4.82
 numpy==2.4.6
 pillow==12.2.0
@@ -11,6 +18,12 @@ matplotlib==3.10.7
 scipy==1.18.0
 opencv-python==4.13.0.92
 
-# cut-out extraction (steps 01 and 11)
+# Backs the GFLOPs column. Without it every model reports FLOPs as unavailable
+# rather than failing, so a missing install is easy to miss. The distribution is
+# ultralytics-thop, Ultralytics' fork; it installs as the module `thop`, and
+# plain `thop` on PyPI stops at 0.1.1 and will not satisfy this.
+ultralytics-thop==2.0.20
+
+# cut-out extraction, steps 02 and 03
 rembg==2.0.76
 onnxruntime==1.27.0
