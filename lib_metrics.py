@@ -4,11 +4,10 @@ lib_metrics.py
 The model-characterisation metrics the paper reports alongside detection
 accuracy: capacity, cost and localisation quality.
 
-Kept separate from the trainer and the evaluator because both need it and
-because EDNet runs in its own virtual environment. That environment has torch
-and numpy but no thop, so FLOPs are reported as unavailable there rather than
-silently omitted or guessed -- an absent number and a wrong number are not the
-same thing.
+Kept separate from the trainer and the evaluator because both need it. Where
+an optional dependency is missing -- thop, for FLOPs -- the metric is reported
+as unavailable rather than silently omitted or guessed. An absent number and a
+wrong number are not the same thing.
 
 Conventions, fixed here so every model is measured the same way:
 
@@ -32,7 +31,7 @@ def count_parameters(model):
 
 
 def count_gflops(model, imgsz=640):
-    """GFLOPs at batch 1, or None when thop is unavailable (the EDNet venv)."""
+    """GFLOPs at batch 1, or None when thop is not installed."""
     try:
         import thop
         import torch

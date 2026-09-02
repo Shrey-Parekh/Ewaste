@@ -7,7 +7,7 @@ Collects every evaluated model into the one table the paper reports, so that
 It reads the summaries written by 06_evaluate.py and 10_ensemble.py and emits
 the same table three ways: printed for reading, CSV for further work, and a
 LaTeX tabular for the manuscript. A metric a model genuinely does not have --
-FLOPs under the EDNet environment, which has no thop, or mIoU before the test
+FLOPs where thop is not installed, or mIoU before the test
 photographs have been annotated -- is printed as a dash. It is never filled in
 with a plausible-looking number.
 
@@ -44,7 +44,6 @@ MODELS = [
     ("ResNet34+FPN+CBAM", "r34_fpn_cbam"),
     ("ResNet34+BiFPN+CBAM", "r34_bifpn_cbam"),
     ("YOLOv11s+BiFPN+CBAM", "v11s_bifpn_cbam"),
-    ("EDNet-S", "ednets"),
     ("Ensemble", "ensemble"),
 ]
 

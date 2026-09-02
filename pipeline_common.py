@@ -6,15 +6,11 @@ Helpers shared by every trainer in the pipeline.
 It also holds the defensive image decoder, which the evaluator and the
 annotator both need because they read the same photograph corpus.
 
-The trainer helpers live here rather than in 05_train.py because the EDNet
-comparison
-runs in a separate virtual environment that has no Ultralytics installed --
-importing 05_train.py from it would fail on its top-level
-``from ultralytics import YOLO``. This module imports only NumPy, so both
-trainers use exactly the same code to locate the operating point. That
-matters: the F1-optimal synthetic confidence is what the paper carries into
-the real-image evaluation, so if two models computed it differently the
-comparison between them would be meaningless.
+The trainer helpers live here rather than in 05_train.py so that anything
+needing the operating point can import them without pulling in Ultralytics and
+a whole training stack. The F1-optimal synthetic confidence is what the paper
+carries into the real-image evaluation, so if two models computed it
+differently the comparison between them would be meaningless.
 """
 
 import numpy as np
@@ -47,7 +43,7 @@ def f1_curve(metrics):
 
     Ultralytics exposes this in more than one place depending on version, so
     try the direct attributes first and fall back to curves_results. Both the
-    current package and the older fork EDNet is built on are covered.
+    older forks of it are covered as well as the current release.
     """
     box = getattr(metrics, "box", None)
     x = getattr(box, "px", None)

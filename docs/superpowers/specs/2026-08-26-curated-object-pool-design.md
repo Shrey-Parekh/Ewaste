@@ -107,7 +107,6 @@ python 03_screen_cutouts.py --pool <survivors>
 python 04_build_dataset.py --pool <survivors>
 python 05_train.py --pool <n> --model yolov8s.pt
 python 05_train.py --pool <n> --model yolo11s.pt --tag yolo11s
-external/.venv-ednet/Scripts/python.exe 05b_train_ednet.py --pool <n>
 ```
 
 Then the three-model comparison table.

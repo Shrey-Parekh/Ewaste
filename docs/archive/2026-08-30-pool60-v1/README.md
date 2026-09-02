@@ -13,7 +13,6 @@ comparable with the current results and must not be quoted in the paper.
 |---|---|---|---|
 | YOLOv8s | 78.5% | 7.0% | 0.820 |
 | YOLOv11s | 84.2% | 10.0% | 0.830 |
-| EDNet-S | 82.5% | 11.0% | 0.813 |
 
-EDNet was VisDrone-pretrained while the YOLO arms were COCO-pretrained, so its
-figures confound architecture with pretraining corpus.
+An EDNet-S arm was also trained in this round. It was dropped from the project
+in full on 2026-09-02, and its summaries were removed with it.

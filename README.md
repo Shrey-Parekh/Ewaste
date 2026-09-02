@@ -14,13 +14,6 @@ photographs they have never seen.
 pip install -r requirements.txt
 ```
 
-EDNet is the exception: it pins `torch==2.0.1` and `numpy<2.0`, which are
-incompatible with the environment above. It gets its own virtual environment:
-
-```bash
-bash external/setup_ednet.sh
-```
-
 ## Pipeline
 
 Run in order. Every step is seeded, so the whole thing is reproducible.
@@ -116,10 +109,7 @@ python 06_evaluate.py --pool 60 --tag v8s_cbam
 ...and so on for the remaining configurations in `models/`. See
 `docs/HANDOFF.md` for the full command list and the tag each model must use.
 
-Two caveats belong in any write-up of these numbers. The Ultralytics models
-start from COCO weights and the ResNet arms from ImageNet, whereas the
-published EDNet checkpoints are trained on VisDrone; a difference involving
-EDNet confounds architecture with pretraining corpus. And across seeds with
+One caveat belongs in any write-up of these numbers: across seeds with
 everything else fixed, detection rate has spanned roughly four points, so
 differences smaller than that should not be ranked.
 
@@ -138,7 +128,6 @@ eval_pool*/     evaluation results
 logs/           build logs
 docs/           design records, the handoff, and archived superseded results
 Manuscripts/    LaTeX source, figures, tables, highlights
-external/       EDNet clone and its isolated virtual environment
 ```
 
 Generated directories are gitignored: they are reproducible from `splits/` and

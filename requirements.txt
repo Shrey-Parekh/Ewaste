@@ -2,8 +2,6 @@
 # with. Recorded exactly rather than loosely so the numbers stay reproducible.
 # Python 3.13.13 on Windows 11, CUDA 12.8, single NVIDIA GeForce RTX 4060 Ti.
 #
-# NOTE: EDNet does NOT run in this environment. It pins torch 2.0.1 and
-# numpy<2.0 and needs its own interpreter; see external/setup_ednet.sh.
 
 torch==2.11.0
 ultralytics==8.4.82

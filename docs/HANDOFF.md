@@ -104,7 +104,6 @@ Scripts run in numeric order. `lib_*.py` are libraries, not steps.
 | `03_screen_cutouts.py` | Auto-rejects bad mattes → final object pool |
 | `04_build_dataset.py` | Composites objects onto backgrounds → synthetic training set |
 | `05_train.py` | Trains a YOLO detector (`--model`, `--tag`) |
-| `05b_train_ednet.py` | Trains EDNet (separate venv, VisDrone-pretrained) |
 | `06_evaluate.py` | Scores a detector on real photographs |
 | `07_make_figures.py` | Manuscript figures |
 | `08_verify_integrity.py` | Asserts no training photo leaked into evaluation |
@@ -135,16 +134,11 @@ python 06_evaluate.py --pool 60
 
 python 05_train.py --pool 60 --model yolo11s.pt --tag yolo11s
 python 06_evaluate.py --pool 60 --tag yolo11s
-
-external/.venv-ednet/Scripts/python.exe 05b_train_ednet.py --pool 60
-external/.venv-ednet/Scripts/python.exe 06_evaluate.py --pool 60 --tag ednets --backend ednet
 ```
 
 `--pool 60` selects `dataset_pool60/`; it is **not** a free parameter, it must
 match a dataset that exists on disk.
 
-**EDNet's tag is `ednets`, not `ednet`.** Using the wrong one produces
-`[!] weights not found`.
 
 ---
 
@@ -188,8 +182,7 @@ chips, 67 smartphones.
 all eight architectures could be retrained under one uniform schedule, which is
 what makes the comparison fair. Nothing may be quoted from memory.
 
-The superseded figures (YOLOv8s 78.5%/7.0%, YOLOv11s 84.2%/10.0%, EDNet-S
-82.5%/11.0%) are archived at `docs/archive/2026-08-30-pool60-v1/`. They came
+The superseded figures (YOLOv8s 78.5%/7.0%, YOLOv11s 84.2%/10.0%) are archived at `docs/archive/2026-08-30-pool60-v1/`. They came
 from a different schedule and are **not** comparable with what the current code
 produces.
 
@@ -198,8 +191,6 @@ produces.
 - **Expect no model to dominate on both axes.** Report the
   sensitivity/specificity trade-off; do not crown a winner on F1.
 - **Differences under ~4 points are inside seed noise** at one seed per model.
-- **EDNet is confounded.** VisDrone-pretrained backbone against COCO-pretrained
-  YOLO arms and ImageNet-pretrained ResNet arms. State this wherever it appears.
 - **The ensemble costs roughly seven times the inference of one model.** Its
   FPS column will look poor; report it plainly rather than omitting it.
 
@@ -219,7 +210,7 @@ produces.
 | 8 | Inference time | Implemented (`06_evaluate.py`, batch 1, real photographs) |
 | 9 | FPS | Implemented (derives from 8) |
 | 10 | Parameter count | Persisted |
-| 11 | FLOPs | Persisted; unavailable in the EDNet venv, which has no thop |
+| 11 | FLOPs | Persisted; unavailable where thop is not installed |
 | 12 | Model size (MB) | Persisted |
 | 13 | Training time | Persisted (`train_seconds`) |
 
@@ -250,8 +241,6 @@ All five configurations were verified to build, forward-pass at stride
 and still train from their stock checkpoints, so the baselines re-run without
 touching any new file.
 
-EDNet-S is trained and evaluated but is **not** in the mentor's numbered list.
-Decide whether it stays in the paper as an extra baseline or is dropped.
 
 Models 5 and 6 turned out **not** to need a from-scratch detector, contrary to
 the earlier estimate in this file. Ultralytics ships a `TorchVision` wrapper
@@ -283,8 +272,6 @@ research effort rather than an add-on.
 | Neck width | **128 for FPN and BiFPN alike** | A different width would confound neck topology with neck capacity |
 | Batch size | **16, every arm** | Measured: the heaviest model peaks at 7.6 GiB of an 8 GiB card at batch 32. Ultralytics accumulates to a nominal batch of 64, so 16 and 32 optimise identically |
 | CBAM placement | **After the last neck layer, before Detect** | Preserves every pre-existing layer index, so the COCO checkpoint still transfers into the whole backbone and neck |
-| Ensemble | **All 7 models, weighted box fusion** | EDNet excluded: its VisDrone pretraining would put a third corpus inside the ensemble |
-| Annotation | **All 400, drawn by hand** | Model-assisted labels would make the ground truth a function of the model being scored |
 
 ---
 
@@ -295,15 +282,6 @@ research effort rather than an add-on.
 2. **The 400 photographs are not annotated yet.** `09_annotate.py` exists and
    resumes where it stopped; until it has been run, mIoU and Dice are the only
    two metrics the table cannot fill.
-3. **EDNet's place in the final paper.** It is retained and will be retrained,
-   but it sits outside the mentor's numbered list and is confounded by its
-   pretraining corpus. Decide whether it appears as an extra baseline or is
-   dropped once its numbers exist.
-4. **Whether the pool-25 diversity ablation returns.** It compared 25 vs 200
-   objects from the old uncurated pool and is no longer valid. Drop it, or
-   re-run within the curated pool.
-5. **Grad-CAM target.** §5.3 calls for it on whichever of models 1-7 performs
-   best, which cannot be chosen until they have all been trained.
 
 ## 8. Manuscript status
 
@@ -330,16 +308,6 @@ numbers that no longer exist. Needs:
   the same directory and froze `results.csv`.
 - **Training two models at once will not fit.** 8 GB card, ~4.8 GB per run.
   Evaluation alongside training is fine (inference only, no optimizer state).
-- **EDNet lives in `external/.venv-ednet/`** with torch 2.0.1+cu118, separate
-  from the main environment's 2.11.0+cu128. Run it with that interpreter.
-- **One TrashBox photograph has a malformed EXIF block**
-  (`electronic chips/electronic_chip 485.jpg`). `06_evaluate.py` decodes
-  defensively because of it; do not "simplify" that back to passing paths
-  straight to Ultralytics.
-- **`06_evaluate.py` searches a fine confidence grid** (step 0.005) for the
-  operating point and reports Wilson intervals. The coarse 9-point table is
-  kept only for readability. Re-running an old evaluation with the current code
-  changes the reported operating point — this is expected and correct.
 
 ---
 
@@ -450,17 +418,6 @@ python 06_evaluate.py --pool 60 --tag r34_bifpn_cbam
 python 05_train.py    --pool 60 --model models/yolo11s-bifpn-cbam.yaml --tag v11s_bifpn_cbam
 python 06_evaluate.py --pool 60 --tag v11s_bifpn_cbam
 ```
-
-### EDNet (its own interpreter)
-
-```bash
-external/.venv-ednet/Scripts/python.exe 05b_train_ednet.py --pool 60
-external/.venv-ednet/Scripts/python.exe 06_evaluate.py --pool 60 --tag ednets --backend ednet
-```
-
-The tag is `ednets`, not `ednet`. Using the wrong one produces
-`[!] weights not found`. That environment has no thop, so its GFLOPs cell will
-read `-`; every other metric is measured.
 
 ### Ensemble and the metrics table
 

@@ -26,17 +26,10 @@ from pathlib import Path
 import argparse
 import csv
 import json
-import sys
 
 from PIL import Image, ImageDraw
 
-try:
-    import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
-except ImportError:
-    # The EDNet environment has no Ultralytics, so this module cannot load
-    # there. It is only needed to unpickle the custom-architecture
-    # checkpoints, which are never evaluated under that backend.
-    pass
+import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
 from lib_metrics import (count_gflops, count_parameters, localisation_summary,
                          match_ious, measure_latency, weight_size_mb)
 from pipeline_common import load_image
@@ -66,21 +59,8 @@ LATENCY_SAMPLE = 200
 # ----------------------------------------------------------
 
 
-def load_model(weights, backend):
-    """
-    Build a detector from a checkpoint.
-
-    The import is deferred rather than done at module level because the two
-    backends live in different virtual environments: EDNet pins torch 2.0.1
-    and numpy<2.0 and has no Ultralytics installed, so a top-level
-    ``from ultralytics import YOLO`` would make this script unimportable there.
-    Both classes expose the same predict() contract, so nothing downstream
-    needs to know which one it got.
-    """
-    if backend == "ednet":
-        sys.path.insert(0, str(ROOT / "external" / "EDNet"))
-        from ednet import EDNet
-        return EDNet(str(weights))
+def load_model(weights):
+    """Build a detector from a checkpoint."""
     from ultralytics import YOLO
     return YOLO(str(weights))
 
@@ -271,10 +251,6 @@ def main():
     ap.add_argument("--pool", type=int, default=200)
     ap.add_argument("--tag", type=str, default="",
                     help="run-directory suffix used by the architecture comparison")
-    ap.add_argument("--backend", choices=("ultralytics", "ednet"),
-                    default="ultralytics",
-                    help="which package loads the checkpoint; 'ednet' must be "
-                         "run with external/.venv-ednet/Scripts/python.exe")
     ap.add_argument("--seed", type=int, default=0,
                     help="training seed of the run to evaluate; 0 is the "
                          "original run and keeps the original directory names")
@@ -296,7 +272,7 @@ def main():
         synth = json.loads(synth_path.read_text(encoding="utf-8"))
 
     print(f"Loading {weights}")
-    model = load_model(weights, args.backend)
+    model = load_model(weights)
 
     organic = read_manifest("organic_test")
     ewaste = read_manifest("ewaste_test")

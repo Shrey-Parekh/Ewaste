@@ -9,11 +9,6 @@ keeps one box and discards the rest, WBF averages the coordinates of every box
 in a cluster weighted by confidence, so agreement between models sharpens the
 box rather than merely selecting one model's version of it.
 
-EDNet is deliberately excluded. Its backbone is VisDrone-pretrained while the
-seven members are COCO- or ImageNet-pretrained, so including it would put a
-different pretraining corpus inside the ensemble and make the result harder to
-attribute than it already is.
-
 The statistics are not reimplemented here. 06_evaluate.py is imported by path
 -- its module name starts with a digit, so it cannot be imported by name, the
 same reason 04_build_dataset.py loads lib_composite.py that way -- and its
