@@ -332,15 +332,6 @@ def main():
         w.writeheader()
         w.writerows(fine_rows)
 
-    if loc_rows:
-        with open(out / "localisation_per_image.csv", "w", newline="",
-                  encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["path", "n_gt", "n_detections",
-                                              "n_matched", "ceiling", "best_iou"])
-            w.writeheader()
-            for r in loc_rows:
-                w.writerow(dict(r, path=r["path"].relative_to(ROOT).as_posix()))
-
     with open(out / "per_image.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["role", "category", "path", "n_boxes", "max_conf"])
@@ -349,8 +340,21 @@ def main():
                 w.writerow([role, category, p.relative_to(ROOT).as_posix(),
                             len(confs), round(max(confs), 4) if confs else ""])
 
+    # Order matters below, and each step needs the one before it: the tuned
+    # optimum, then the threshold carried over from synthetic validation, then
+    # the operating point chosen between them, then the localisation measured
+    # at that point, and only then the file it is written to.
     best = max(fine_rows, key=lambda r: r["f1"])
     best_coarse = max(rows, key=lambda r: r["f1"])
+
+    synth_conf = synth.get("best_f1_conf")
+    at_synth = None
+    if synth_conf is not None:
+        # Fine grid: the threshold carried over from synthetic validation is
+        # matched to within FINE_STEP rather than snapped to a coarse point,
+        # so "what you would actually get in deployment" is not distorted by
+        # the reporting grid.
+        at_synth = min(fine_rows, key=lambda r: abs(r["confidence"] - synth_conf))
 
     # The reported operating point is the one carried over from synthetic
     # validation, not the one that maximises F1 on the test set. Choosing a
@@ -363,15 +367,17 @@ def main():
     headline = at_synth if at_synth is not None else best
     headline_source = ("synthetic validation" if at_synth is not None
                        else "TEST SET -- no synthetic threshold available")
+
     localisation, loc_rows = localisation_at(ew_det, truth, headline["confidence"])
-    synth_conf = synth.get("best_f1_conf")
-    at_synth = None
-    if synth_conf is not None:
-        # Fine grid: the threshold carried over from synthetic validation is
-        # matched to within FINE_STEP rather than snapped to a coarse point,
-        # so "what you would actually get in deployment" is not distorted by
-        # the reporting grid.
-        at_synth = min(fine_rows, key=lambda r: abs(r["confidence"] - synth_conf))
+
+    if loc_rows:
+        with open(out / "localisation_per_image.csv", "w", newline="",
+                  encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["path", "n_gt", "n_detections",
+                                              "n_matched", "ceiling", "best_iou"])
+            w.writeheader()
+            for r in loc_rows:
+                w.writerow(dict(r, path=r["path"].relative_to(ROOT).as_posix()))
 
     lines = []
 
