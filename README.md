@@ -1,4 +1,4 @@
-# Detecting electronic waste contamination in wet biodegradable waste
+﻿# Detecting electronic waste contamination in wet biodegradable waste
 
 Code for the paper *Detecting electronic waste contamination in wet
 biodegradable waste with synthetically composited training data*.
@@ -20,12 +20,12 @@ Run in order. Every step is seeded, so the whole thing is reproducible.
 
 | Step | Script | Produces |
 |---|---|---|
-| 1 | `src/01_build_splits.py` | `splits/*.csv` — partitions both collections into disjoint roles |
-| 2 | `src/02_make_cutouts.py` | `cutouts/` — alpha-matted objects, plus `extraction_log.csv` |
-| 3 | `src/03_screen_cutouts.py` | `cutouts/ewaste_clean/` — rejects matting failures and collages |
-| 4 | `src/04_build_dataset.py --pool 60` | `dataset_pool60/` — 1500 composited images with occlusion-aware labels |
+| 1 | `src/01_build_splits.py` | `splits/*.csv` â€” partitions both collections into disjoint roles |
+| 2 | `src/02_make_cutouts.py` | `cutouts/` â€” alpha-matted objects, plus `extraction_log.csv` |
+| 3 | `src/03_screen_cutouts.py` | `cutouts/ewaste_clean/` â€” rejects matting failures and collages |
+| 4 | `src/04_build_dataset.py --pool 60` | `dataset_pool60/` â€” 1500 composited images with occlusion-aware labels |
 | 5 | `src/05_train.py --pool 60` | `runs/detect/pool60[_tag]/` |
-| 6 | `src/06_evaluate.py --pool 60` | `eval_pool60[_tag]/` — sweep over the withheld real sets |
+| 6 | `src/06_evaluate.py --pool 60` | `eval_pool60[_tag]/` â€” sweep over the withheld real sets |
 | 7 | `src/07_make_figures.py` | `Manuscripts/figures/` |
 
 `src/08_verify_integrity.py` audits the whole thing and can be run at any time. It
@@ -64,7 +64,7 @@ than the raw directories:
 
 The five are pairwise disjoint. 52 TrashBox photographs are withheld from the
 test source because they share a basename with a curated pool photograph. If
-you add a step, read a manifest — never `raw/` directly.
+you add a step, read a manifest â€” never `raw/` directly.
 
 `ewaste_test` excludes the `laptops` and `small appliances` categories: an item
 that large would be removed by hand before organic waste reached a sorting
@@ -72,7 +72,7 @@ line, so it is not the contamination scenario the paper targets.
 
 ## Model comparison
 
-Seven architectures train on the identical dataset through the identical
+Eleven architectures train on the identical dataset through the identical
 schedule, so only the architecture differs. That schedule lives in exactly one
 place, `TRAIN_CFG` in `src/05_train.py`, and nothing is set per model. Batch size
 is 16 for every arm, chosen by measuring peak VRAM across all of them: the
@@ -106,7 +106,7 @@ python src/05_train.py    --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_c
 python src/06_evaluate.py --pool 60 --tag v8s_cbam
 ```
 
-...and so on for the remaining configurations in `models/`. See
+...and so on for the remaining configurations in `models/`. Three backbones -- ResNet18, GoogLeNet and EfficientNet-B0 -- are each paired with both necks. See
 `docs/HANDOFF.md` for the full command list and the tag each model must use.
 
 One caveat belongs in any write-up of these numbers: across seeds with
@@ -131,7 +131,7 @@ docs/           design records, the handoff, and archived superseded results
 ```
 
 Generated directories are gitignored: they are reproducible from `splits/` and
-`models/`, which are tracked. `annotations/` is tracked as well — it is drawn
+`models/`, which are tracked. `annotations/` is tracked as well â€” it is drawn
 by hand and cannot be regenerated. `Manuscripts/` is deliberately not tracked:
 the paper lives with its author, this repository holds the code that produced
 the numbers in it.
@@ -139,14 +139,14 @@ the numbers in it.
 ### Library modules
 
 `src/lib_segment.py` and `src/lib_composite.py` hold the segmentation and compositing
-algorithms. They are **not pipeline steps** — `src/02_make_cutouts.py` and
+algorithms. They are **not pipeline steps** â€” `src/02_make_cutouts.py` and
 `src/04_build_dataset.py` import them by path and override their configuration
 rather than duplicating the algorithms, so the two cannot drift apart. Do not
 delete them.
 
 Their module-level defaults still point at the whole of `raw/`, ignoring the
 split manifests, which is why the pipeline scripts override every input path
-before calling in — and why both refuse to run standalone.
+before calling in â€” and why both refuse to run standalone.
 
 `src/lib_modules.py` defines the BiFPN fusion node and registers it, along with
 Ultralytics' own CBAM, with the YAML parser. Anything that builds, trains or

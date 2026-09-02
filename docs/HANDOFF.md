@@ -231,8 +231,12 @@ mIoU and Dice land under `localisation`.
 | 2 | YOLOv11s | Done |
 | 3 | YOLOv8s + CBAM | Built, `models/yolov8s-cbam.yaml`, tag `v8s_cbam` |
 | 4 | YOLOv11s + CBAM | Built, `models/yolo11s-cbam.yaml`, tag `v11s_cbam` |
-| 5 | ResNet34 + FPN + CBAM | Built, `models/resnet34-fpn-cbam.yaml`, tag `r34_fpn_cbam` |
-| 6 | ResNet34 + BiFPN + CBAM | Built, `models/resnet34-bifpn-cbam.yaml`, tag `r34_bifpn_cbam` |
+| 5a | ResNet18 + FPN + CBAM | `models/resnet18-fpn-cbam.yaml`, tag `r18_fpn_cbam` |
+| 5b | GoogLeNet + FPN + CBAM | `models/googlenet-fpn-cbam.yaml`, tag `gnet_fpn_cbam` |
+| 5c | EfficientNet + FPN + CBAM | `models/efficientnet-fpn-cbam.yaml`, tag `effnet_fpn_cbam` |
+| 6a | ResNet18 + BiFPN + CBAM | `models/resnet18-bifpn-cbam.yaml`, tag `r18_bifpn_cbam` |
+| 6b | GoogLeNet + BiFPN + CBAM | `models/googlenet-bifpn-cbam.yaml`, tag `gnet_bifpn_cbam` |
+| 6c | EfficientNet + BiFPN + CBAM | `models/efficientnet-bifpn-cbam.yaml`, tag `effnet_bifpn_cbam` |
 | 7 | YOLOv11s + BiFPN + CBAM | Built, `models/yolo11s-bifpn-cbam.yaml`, tag `v11s_bifpn_cbam` |
 | 8 | Ensemble | Built, `src/10_ensemble.py`, WBF over models 1-7 |
 
@@ -268,7 +272,9 @@ research effort rather than an add-on.
 | mIoU / Dice scope | **Annotate real test photographs with boxes** | User's explicit choice over synthetic-only |
 | XAI | **Grad-CAM** | Mature tooling for CNN detectors |
 | Primary metrics | Detection rate + false-alarm rate | Precision and F1 additionally depend on the arbitrary 400:747 positive-to-negative ratio |
-| ResNet depth | **resnet34** | Chosen over resnet18 for capacity; both ResNet arms use it, so FPN-vs-BiFPN is the only difference between models 5 and 6 |
+| Backbones | **ResNet18, GoogLeNet, EfficientNet-B0** | Mentor's request. Each is paired with both necks, so FPN against BiFPN is asked three times rather than once |
+| Inception variant | **GoogLeNet (Inception v1)** | Inception v3 has unpadded stem convolutions and yields 77/38/18 pixel maps at 640 px, so its P5 upsamples to 36 against a P4 of 38 and the neck cannot concatenate at all. GoogLeNet gives exactly 8/16/32 |
+| EfficientNet P5 | **320-channel block output** | Not the 1280-channel projection after it, which exists to feed a classifier. EfficientDet takes the block outputs |
 | Neck width | **128 for FPN and BiFPN alike** | A different width would confound neck topology with neck capacity |
 | Batch size | **16, every arm** | Measured: the heaviest model peaks at 7.6 GiB of an 8 GiB card at batch 32. Ultralytics accumulates to a nominal batch of 64, so 16 and 32 optimise identically |
 | CBAM placement | **After the last neck layer, before Detect** | Preserves every pre-existing layer index, so the COCO checkpoint still transfers into the whole backbone and neck |
@@ -406,14 +412,30 @@ python src/05_train.py    --pool 60 --model models/yolo11s-cbam.yaml --tag v11s_
 python src/06_evaluate.py --pool 60 --tag v11s_cbam
 ```
 
-### New backbones and necks
+### Backbones and necks
+
+Three backbones, each paired with both necks. Everything about a pair is held
+equal except the fusion topology, so the six runs answer the FPN-against-BiFPN
+question three times over.
 
 ```bash
-python src/05_train.py    --pool 60 --model models/resnet34-fpn-cbam.yaml --tag r34_fpn_cbam
-python src/06_evaluate.py --pool 60 --tag r34_fpn_cbam
+python src/05_train.py    --pool 60 --model models/resnet18-fpn-cbam.yaml --tag r18_fpn_cbam
+python src/06_evaluate.py --pool 60 --tag r18_fpn_cbam
 
-python src/05_train.py    --pool 60 --model models/resnet34-bifpn-cbam.yaml --tag r34_bifpn_cbam
-python src/06_evaluate.py --pool 60 --tag r34_bifpn_cbam
+python src/05_train.py    --pool 60 --model models/resnet18-bifpn-cbam.yaml --tag r18_bifpn_cbam
+python src/06_evaluate.py --pool 60 --tag r18_bifpn_cbam
+
+python src/05_train.py    --pool 60 --model models/googlenet-fpn-cbam.yaml --tag gnet_fpn_cbam
+python src/06_evaluate.py --pool 60 --tag gnet_fpn_cbam
+
+python src/05_train.py    --pool 60 --model models/googlenet-bifpn-cbam.yaml --tag gnet_bifpn_cbam
+python src/06_evaluate.py --pool 60 --tag gnet_bifpn_cbam
+
+python src/05_train.py    --pool 60 --model models/efficientnet-fpn-cbam.yaml --tag effnet_fpn_cbam
+python src/06_evaluate.py --pool 60 --tag effnet_fpn_cbam
+
+python src/05_train.py    --pool 60 --model models/efficientnet-bifpn-cbam.yaml --tag effnet_bifpn_cbam
+python src/06_evaluate.py --pool 60 --tag effnet_bifpn_cbam
 
 python src/05_train.py    --pool 60 --model models/yolo11s-bifpn-cbam.yaml --tag v11s_bifpn_cbam
 python src/06_evaluate.py --pool 60 --tag v11s_bifpn_cbam
