@@ -84,7 +84,7 @@ def synthetic_val(pool):
     return out
 
 
-def ensemble_threshold(models, pool, ev, n_models):
+def ensemble_threshold(models, pool, ev, weights):
     """
     Pick the ensemble's operating threshold on the synthetic validation split.
 
@@ -111,7 +111,7 @@ def ensemble_threshold(models, pool, ev, n_models):
                  r.boxes.xyxy.cpu().numpy().tolist() if r.boxes is not None else [])
                 for r in res])
         for j, (_, gt) in enumerate(chunk):
-            confs, boxes = fuse([pm[j] for pm in per_model], n_models)
+            confs, boxes = fuse([pm[j] for pm in per_model], weights)
             per_image.append((confs, boxes, gt))
     lo, hi = min(ev.THRESHOLDS), max(ev.THRESHOLDS)
     steps = int(round((hi - lo) / ev.FINE_STEP)) + 1
@@ -138,13 +138,60 @@ def iou(a, b):
     return inter / (area - inter)
 
 
-def fuse(per_model, n_models, iou_thr=IOU_THR):
+def member_weights(members, pool, power):
+    """
+    One weight per member, from its held-out validation F1.
+
+    The weights come from the synthetic validation split and never from the
+    real test set. Weighting members by their test performance would tune the
+    ensemble on the data it is then scored against, which is the same optimism
+    the single models' operating points were changed to avoid -- and it would
+    be harder to spot here, because it would be buried in a fusion rule rather
+    than stated as a threshold.
+
+    Normalised to a mean of one, so an equal-weight ensemble is the special
+    case where every model validated identically and nothing about the fusion
+    arithmetic changes.
+
+    ``power`` sharpens the spread. At 1.0 the weights are directly proportional
+    to validation F1, which is what the weighted box fusion paper does, but
+    these models validate within a few points of each other so that spread is
+    narrow. Raising it separates them further at the cost of being a knob
+    rather than a measurement, so it is reported alongside the weights.
+    """
+    f1s = []
+    for _, tag in members:
+        suffix = f"_{tag}" if tag else ""
+        p = ROOT / "runs" / "detect" / f"pool{pool}{suffix}" / "synthetic_summary.json"
+        if not p.exists():
+            return None, f"{p.parent.parent.name} has no synthetic_summary.json"
+        f1 = json.loads(p.read_text(encoding="utf-8")).get("best_f1")
+        if not f1:
+            return None, f"{p.parent.parent.name} recorded no validation F1"
+        f1s.append(float(f1))
+
+    mean = sum(f1s) / len(f1s)
+    raw = [(f / mean) ** power for f in f1s]
+    scale = len(raw) / sum(raw)
+    return [r * scale for r in raw], None
+
+
+def fuse(per_model, weights, iou_thr=IOU_THR):
     """
     Weighted box fusion of one image's detections.
 
-    ``per_model`` is a list, one entry per model, of (confidences, boxes).
-    Returns fused (confidences, boxes).
+    ``per_model`` is a list, one entry per model, of (confidences, boxes), and
+    ``weights`` carries one non-negative weight per model in the same order.
+
+    The weights enter in both places a model's opinion counts. They pull the
+    fused coordinates, so a trusted model moves the box further than a weak one
+    agreeing with it; and they set the agreement term, so a detection only one
+    model made is discounted by how much that particular model is trusted
+    rather than by a flat one-over-n.
+
+    With equal weights this reduces exactly to unweighted fusion.
     """
+    w_total = sum(weights) or 1e-9
     entries = []
     for idx, (confs, boxes) in enumerate(per_model):
         entries.extend((c, b, idx) for c, b in zip(confs, boxes))
@@ -161,27 +208,31 @@ def fuse(per_model, n_models, iou_thr=IOU_THR):
             clusters.append({"box": list(box), "members": [(conf, box, idx)]})
             continue
         best["members"].append((conf, box, idx))
-        total = sum(m[0] for m in best["members"])
-        best["box"] = [sum(m[0] * m[1][k] for m in best["members"]) / total
-                       for k in range(4)]
+        total = sum(m[0] * weights[m[2]] for m in best["members"]) or 1e-9
+        best["box"] = [
+            sum(m[0] * weights[m[2]] * m[1][k] for m in best["members"]) / total
+            for k in range(4)
+        ]
 
     out_confs, out_boxes = [], []
     for c in clusters:
-        confs = [m[0] for m in c["members"]]
-        contributors = len({m[2] for m in c["members"]})
-        # a box only one model found is downweighted in proportion
-        out_confs.append(sum(confs) / len(confs) * contributors / n_models)
+        mem = c["members"]
+        wsum = sum(weights[m[2]] for m in mem) or 1e-9
+        score = sum(m[0] * weights[m[2]] for m in mem) / wsum
+        # agreement, measured by weight rather than by head count
+        agree = sum(weights[i] for i in {m[2] for m in mem}) / w_total
+        out_confs.append(score * agree)
         out_boxes.append(c["box"])
     return out_confs, out_boxes
 
 
-def fuse_detections(per_model_detections, n_models):
+def fuse_detections(per_model_detections, weights):
     """Fuse aligned per-model detection lists into one 06-shaped list."""
     fused = []
     reference = per_model_detections[0]
     for i, (category, path, _, _) in enumerate(reference):
         confs, boxes = fuse([(d[i][2], d[i][3]) for d in per_model_detections],
-                            n_models)
+                            weights)
         fused.append((category, path, confs, boxes))
     return fused
 
@@ -189,11 +240,20 @@ def fuse_detections(per_model_detections, n_models):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pool", type=int, default=60)
+    ap.add_argument("--weighting", choices=("val_f1", "equal"), default="val_f1",
+                    help="how much each member counts. val_f1 weights members "
+                         "by their held-out synthetic validation F1; equal "
+                         "gives every member the same say.")
+    ap.add_argument("--weight-power", type=float, default=1.0,
+                    help="sharpens the spread of val_f1 weights. 1.0 is "
+                         "directly proportional, which is what the weighted "
+                         "box fusion paper does; higher separates members "
+                         "further.")
     args = ap.parse_args()
 
     ev = load_evaluator()
 
-    weights = []
+    members = []
     for label, tag in MEMBERS:
         suffix = f"_{tag}" if tag else ""
         w = ROOT / "runs" / "detect" / f"pool{args.pool}{suffix}" / "weights" / "best.pt"
@@ -201,7 +261,23 @@ def main():
             print(f"[!] missing member: {label} -> {w}")
             print("    train every member before building the ensemble.")
             return
-        weights.append((label, w))
+        members.append((label, w))
+
+    n = len(members)
+    if args.weighting == "equal":
+        weights, why = [1.0] * n, None
+    else:
+        weights, why = member_weights(MEMBERS, args.pool, args.weight_power)
+        if weights is None:
+            print(f"[!] cannot weight by validation F1: {why}")
+            print("    re-run 05_train.py for that member, or pass --weighting equal.")
+            return
+
+    print(f"\nMember weights ({args.weighting}, power {args.weight_power}):")
+    for (label, _), w in zip(MEMBERS, weights):
+        print(f"  {label:24} {w:.3f}")
+    spread = max(weights) / min(weights) if min(weights) > 0 else float("inf")
+    print(f"  strongest member counts {spread:.2f}x the weakest")
 
     out = ROOT / f"eval_pool{args.pool}_ensemble"
     out.mkdir(parents=True, exist_ok=True)
@@ -210,17 +286,16 @@ def main():
     ewaste = ev.read_manifest("ewaste_test")
 
     org_runs, ew_runs, models = [], [], []
-    for label, w in weights:
+    for label, w in members:
         print(f"\n=== {label} ===")
-        model = ev.load_model(w, "ultralytics")
+        model = ev.load_model(w)
         models.append(model)
         org_runs.append(ev.run_inference(model, organic, "organic_test"))
         ew_runs.append(ev.run_inference(model, ewaste, "ewaste_test"))
 
-    n = len(weights)
     print(f"\nFusing {n} models with weighted box fusion, IoU >= {IOU_THR}")
-    org_det = fuse_detections(org_runs, n)
-    ew_det = fuse_detections(ew_runs, n)
+    org_det = fuse_detections(org_runs, weights)
+    ew_det = fuse_detections(ew_runs, weights)
 
     n_org, n_ew = len(org_det), len(ew_det)
 
@@ -235,7 +310,7 @@ def main():
             confs = r.boxes.conf.cpu().numpy().tolist() if r.boxes is not None else []
             boxes = r.boxes.xyxy.cpu().numpy().tolist() if r.boxes is not None else []
             per.append((confs, boxes))
-        fuse(per, n)
+        fuse(per, weights)
 
     latency_ms, fps = measure_latency(predict_all, warm,
                                       warmup=LATENCY_WARMUP, sample=LATENCY_SAMPLE)
@@ -245,7 +320,7 @@ def main():
     capacity = {
         "n_params": sum(sum(p.numel() for p in m.model.parameters()) for m in models),
         "gflops": None,
-        "model_size_mb": round(sum(w.stat().st_size for _, w in weights) / 1e6, 2),
+        "model_size_mb": round(sum(w.stat().st_size for _, w in members) / 1e6, 2),
         "latency_ms": latency_ms,
         "fps": fps,
     }
@@ -263,7 +338,7 @@ def main():
 
     print()
     print("=== choosing the operating threshold on held-out synthetic data ===")
-    synth_conf, synth_f1 = ensemble_threshold(models, args.pool, ev, n)
+    synth_conf, synth_f1 = ensemble_threshold(models, args.pool, ev, weights)
     if synth_conf is not None:
         headline = min(fine_rows, key=lambda r: abs(r["confidence"] - synth_conf))
         headline_source = "synthetic validation"
@@ -306,9 +381,14 @@ def main():
     emit("=" * 74)
     emit(f"ENSEMBLE OF {n} MODELS  (object pool = {args.pool})")
     emit("=" * 74)
-    for label, _ in weights:
-        emit(f"  member: {label}")
+    for (label, _), mw in zip(members, weights):
+        emit(f"  member: {label:24} weight {mw:.3f}")
     emit(f"  fusion: weighted box fusion, cluster IoU >= {IOU_THR}")
+    emit(f"  weighting: {args.weighting}, power {args.weight_power}")
+    if args.weighting == "val_f1":
+        emit("  Weights come from each member's held-out synthetic validation F1,")
+        emit("  never from the test set. Weighting members by their test score")
+        emit("  would tune the ensemble on the data it is then scored against.")
     emit()
     emit(f"  held-out organic images (no e-waste present): {n_org}")
     emit(f"  held-out e-waste images (e-waste present)   : {n_ew}")
@@ -376,7 +456,11 @@ def main():
     summary = {
         "pool": args.pool,
         "model": "ensemble",
-        "members": [label for label, _ in weights],
+        "members": [label for label, _ in members],
+        "member_weights": {label: round(w, 4)
+                           for (label, _), w in zip(members, weights)},
+        "weighting": args.weighting,
+        "weight_power": args.weight_power,
         "fusion": "weighted_box_fusion",
         "fusion_iou": IOU_THR,
         "n_organic_test": n_org,
