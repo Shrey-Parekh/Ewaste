@@ -40,20 +40,11 @@ ROOT = SRC.parent
 OUT = ROOT / "Manuscripts" / "tables"
 
 # (label, run/eval suffix). Order is the order the paper presents them in.
-MODELS = [
-    ("YOLOv8s", ""),
-    ("YOLOv11s", "yolo11s"),
-    ("YOLOv8s+CBAM", "v8s_cbam"),
-    ("YOLOv11s+CBAM", "v11s_cbam"),
-    ("ResNet18+FPN+CBAM", "r18_fpn_cbam"),
-    ("ResNet18+BiFPN+CBAM", "r18_bifpn_cbam"),
-    ("GoogLeNet+FPN+CBAM", "gnet_fpn_cbam"),
-    ("GoogLeNet+BiFPN+CBAM", "gnet_bifpn_cbam"),
-    ("EfficientNet+FPN+CBAM", "effnet_fpn_cbam"),
-    ("EfficientNet+BiFPN+CBAM", "effnet_bifpn_cbam"),
-    ("YOLOv11s+BiFPN+CBAM", "v11s_bifpn_cbam"),
-    ("Ensemble", "ensemble"),
-]
+# Every arm from the one shared list, in its presentation order, plus the
+# ensemble, which is not a trainable arm and so is not in that list.
+from lib_arms import MEMBERS  # noqa: E402
+
+MODELS = MEMBERS + [("Ensemble", "ensemble")]
 
 COLUMNS = [
     ("Model", "model", "{}"),

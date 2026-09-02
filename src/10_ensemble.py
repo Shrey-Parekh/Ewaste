@@ -43,20 +43,9 @@ from pipeline_common import load_image
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
 
-# (label, run-directory suffix). The empty suffix is the plain YOLOv8s run.
-MEMBERS = [
-    ("YOLOv8s", ""),
-    ("YOLOv11s", "yolo11s"),
-    ("YOLOv8s+CBAM", "v8s_cbam"),
-    ("YOLOv11s+CBAM", "v11s_cbam"),
-    ("ResNet18+FPN+CBAM", "r18_fpn_cbam"),
-    ("ResNet18+BiFPN+CBAM", "r18_bifpn_cbam"),
-    ("GoogLeNet+FPN+CBAM", "gnet_fpn_cbam"),
-    ("GoogLeNet+BiFPN+CBAM", "gnet_bifpn_cbam"),
-    ("EfficientNet+FPN+CBAM", "effnet_fpn_cbam"),
-    ("EfficientNet+BiFPN+CBAM", "effnet_bifpn_cbam"),
-    ("YOLOv11s+BiFPN+CBAM", "v11s_bifpn_cbam"),
-]
+# (label, run-directory suffix), from the one list every script shares. The
+# empty suffix is the plain YOLOv8s run.
+from lib_arms import MEMBERS  # noqa: E402
 
 IOU_THR = 0.55          # cluster membership, the WBF paper's default
 LATENCY_WARMUP = 10
