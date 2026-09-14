@@ -32,6 +32,13 @@ import argparse
 import csv
 import json
 
+# False-alarm rates the arms are compared at. Each arm's reported threshold was
+# chosen independently on synthetic validation, and those thresholds land
+# anywhere from 0.155 to 0.500, so the headline detection rates are read off
+# different points of each arm's ROC curve and are not comparable with each
+# other. Detection read at a common false-alarm rate is.
+MATCHED_FA = (0.05, 0.10, 0.15)
+
 # This file lives in src/; the data it reads and writes lives beside src/, not
 # inside it. SRC is used for loading sibling modules by path, ROOT for anything
 # on disk.
@@ -50,14 +57,24 @@ COLUMNS = [
     ("Model", "model", "{}"),
     ("Detect %", "detect_rate", "{:.1f}"),
     ("FA %", "fa_rate", "{:.1f}"),
-    ("mAP@50", "map50", "{:.3f}"),
-    ("mAP@50:95", "map50_95", "{:.3f}"),
+    # Detection at a common false-alarm budget. These are the columns to
+    # compare architectures on; Detect % above is each arm at its own
+    # independently chosen threshold.
+    ("Det@5FA", "det_fa05", "{:.1f}"),
+    ("Det@10FA", "det_fa10", "{:.1f}"),
+    ("Det@15FA", "det_fa15", "{:.1f}"),
+    ("mAP@50 (synth)", "map50", "{:.3f}"),
+    ("mAP@50:95 (synth)", "map50_95", "{:.3f}"),
     ("Prec", "precision", "{:.3f}"),
     ("Rec", "recall", "{:.3f}"),
     ("F1", "f1", "{:.3f}"),
     ("Oracle Det %", "oracle_detect", "{:.1f}"),
+    # Detect % counts a frame where the model fired anywhere. This is the
+    # fraction of those firings that actually landed on an annotated object.
+    ("Hit %", "hit_rate", "{:.1f}"),
     ("mIoU", "miou", "{:.3f}"),
     ("Dice", "dice", "{:.3f}"),
+    ("n matched", "n_matched", "{:d}"),
     ("ms", "latency_ms", "{:.1f}"),
     ("FPS", "fps", "{:.1f}"),
     ("Params M", "params_m", "{:.2f}"),
@@ -76,9 +93,36 @@ def read_json(path):
         return None
 
 
+def detection_at_fa(eval_dir, targets=MATCHED_FA):
+    """
+    Detection rate at each target false-alarm rate, from the fine sweep.
+
+    The sweep is monotonic in confidence but sampled, so an exact target rate
+    usually falls between two rows. This takes the highest detection rate whose
+    false-alarm rate does not exceed the target, which is the operating point a
+    deployer constrained to that budget would actually get. Where the arm
+    cannot reach the target at any threshold the entry is None rather than a
+    number extrapolated past the measured range.
+    """
+    path = eval_dir / "threshold_sweep_fine.csv"
+    if not path.exists():
+        return {t: None for t in targets}
+
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = [(float(r["organic_FP_rate"]), float(r["ewaste_detection_rate"]))
+                for r in csv.DictReader(f)]
+
+    out = {}
+    for t in targets:
+        under = [d for fa, d in rows if fa <= t]
+        out[t] = max(under) if under else None
+    return out
+
+
 def collect(pool, label, suffix):
     tail = f"_{suffix}" if suffix else ""
-    summary = read_json(ROOT / f"eval_pool{pool}{tail}" / "summary.json")
+    eval_dir = ROOT / f"eval_pool{pool}{tail}"
+    summary = read_json(eval_dir / "summary.json")
     if summary is None:
         return None
 
@@ -99,10 +143,18 @@ def collect(pool, label, suffix):
     detect = best.get("ewaste_detection_rate")
     fa = best.get("organic_FP_rate")
 
+    matched = detection_at_fa(eval_dir)
+    hit = loc.get("hit_rate_given_fired")
+
     return {
         "model": label,
         "detect_rate": None if detect is None else detect * 100,
         "fa_rate": None if fa is None else fa * 100,
+        "det_fa05": None if matched[0.05] is None else matched[0.05] * 100,
+        "det_fa10": None if matched[0.10] is None else matched[0.10] * 100,
+        "det_fa15": None if matched[0.15] is None else matched[0.15] * 100,
+        "hit_rate": None if hit is None else hit * 100,
+        "n_matched": loc.get("n_matched"),
         "map50": synth.get("map50"),
         "map50_95": synth.get("map50_95"),
         "precision": best.get("precision"),
