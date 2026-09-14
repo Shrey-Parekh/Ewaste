@@ -119,7 +119,22 @@ def detection_at_fa(eval_dir, targets=MATCHED_FA):
     return out
 
 
-def collect(pool, label, suffix):
+def load_latency(pool):
+    """
+    Latency measured for every arm in one interleaved sitting, if it exists.
+
+    The per-arm figures inside each summary.json were each timed in their own
+    process on their own day, so they carry whatever the machine was doing at
+    the time: two bit-identical runs of one architecture differed by 2.2x.
+    14_latency.py re-measures every arm round-robin in one process, and its
+    numbers replace those where available. The ensemble is not in that file --
+    it is not a trained arm -- so it keeps the figure from its own run.
+    """
+    data = read_json(ROOT / f"latency_pool{pool}.json")
+    return (data or {}).get("arms") or {}
+
+
+def collect(pool, label, suffix, latency=None):
     tail = f"_{suffix}" if suffix else ""
     eval_dir = ROOT / f"eval_pool{pool}{tail}"
     summary = read_json(eval_dir / "summary.json")
@@ -146,6 +161,10 @@ def collect(pool, label, suffix):
     matched = detection_at_fa(eval_dir)
     hit = loc.get("hit_rate_given_fired")
 
+    timed = (latency or {}).get(suffix)
+    latency_ms = timed["latency_ms"] if timed else cap.get("latency_ms")
+    fps = timed["fps"] if timed else cap.get("fps")
+
     return {
         "model": label,
         "detect_rate": None if detect is None else detect * 100,
@@ -164,8 +183,8 @@ def collect(pool, label, suffix):
                           if oracle.get("ewaste_detection_rate") is not None else None),
         "miou": loc.get("mIoU"),
         "dice": loc.get("dice"),
-        "latency_ms": cap.get("latency_ms"),
-        "fps": cap.get("fps"),
+        "latency_ms": latency_ms,
+        "fps": fps,
         "params_m": None if params is None else params / 1e6,
         "gflops": cap.get("gflops"),
         "size_mb": cap.get("model_size_mb"),
@@ -185,9 +204,10 @@ def main():
     ap.add_argument("--pool", type=int, default=60)
     args = ap.parse_args()
 
+    latency = load_latency(args.pool)
     rows, missing = [], []
     for label, suffix in MODELS:
-        row = collect(args.pool, label, suffix)
+        row = collect(args.pool, label, suffix, latency)
         if row:
             rows.append(row)
         else:

@@ -1,0 +1,198 @@
+{
+  "imgsz": 640,
+  "batch": 1,
+  "rounds": 9,
+  "discarded_first": 1,
+  "sample": 60,
+  "device": "NVIDIA GeForce RTX 4060 Ti",
+  "arms": {
+    "": {
+      "label": "YOLOv8s",
+      "latency_ms": 10.13,
+      "fps": 98.7,
+      "round_ms": [
+        10.7,
+        11.35,
+        12.28,
+        11.31,
+        10.51,
+        11.98,
+        10.13,
+        10.49
+      ],
+      "median_ms": 11.0,
+      "contention_pct": 8.6
+    },
+    "yolo11s": {
+      "label": "YOLOv11s",
+      "latency_ms": 11.11,
+      "fps": 90.0,
+      "round_ms": [
+        11.11,
+        11.9,
+        14.44,
+        13.75,
+        12.87,
+        11.47,
+        11.6,
+        11.19
+      ],
+      "median_ms": 11.75,
+      "contention_pct": 5.8
+    },
+    "v8s_cbam": {
+      "label": "YOLOv8s+CBAM",
+      "latency_ms": 10.48,
+      "fps": 95.4,
+      "round_ms": [
+        11.21,
+        11.98,
+        14.32,
+        12.38,
+        11.6,
+        10.56,
+        11.47,
+        10.48
+      ],
+      "median_ms": 11.54,
+      "contention_pct": 10.1
+    },
+    "v11s_cbam": {
+      "label": "YOLOv11s+CBAM",
+      "latency_ms": 12.05,
+      "fps": 83.0,
+      "round_ms": [
+        12.42,
+        15.96,
+        15.08,
+        14.19,
+        12.72,
+        12.1,
+        12.05,
+        13.06
+      ],
+      "median_ms": 12.89,
+      "contention_pct": 7.0
+    },
+    "r18_fpn_cbam": {
+      "label": "ResNet18+FPN+CBAM",
+      "latency_ms": 11.14,
+      "fps": 89.8,
+      "round_ms": [
+        11.44,
+        13.08,
+        13.11,
+        12.04,
+        11.83,
+        11.14,
+        11.7,
+        12.4
+      ],
+      "median_ms": 11.93,
+      "contention_pct": 7.1
+    },
+    "r18_bifpn_cbam": {
+      "label": "ResNet18+BiFPN+CBAM",
+      "latency_ms": 11.55,
+      "fps": 86.6,
+      "round_ms": [
+        12.21,
+        12.68,
+        14.66,
+        15.32,
+        11.55,
+        11.66,
+        12.3,
+        11.67
+      ],
+      "median_ms": 12.26,
+      "contention_pct": 6.1
+    },
+    "gnet_fpn_cbam": {
+      "label": "GoogLeNet+FPN+CBAM",
+      "latency_ms": 12.49,
+      "fps": 80.1,
+      "round_ms": [
+        14.78,
+        15.55,
+        17.54,
+        14.39,
+        12.76,
+        13.14,
+        13.44,
+        12.49
+      ],
+      "median_ms": 13.91,
+      "contention_pct": 11.4
+    },
+    "gnet_bifpn_cbam": {
+      "label": "GoogLeNet+BiFPN+CBAM",
+      "latency_ms": 14.32,
+      "fps": 69.8,
+      "round_ms": [
+        19.05,
+        15.31,
+        19.67,
+        14.93,
+        14.5,
+        16.44,
+        16.1,
+        14.32
+      ],
+      "median_ms": 15.71,
+      "contention_pct": 9.7
+    },
+    "effnet_fpn_cbam": {
+      "label": "EfficientNet+FPN+CBAM",
+      "latency_ms": 13.32,
+      "fps": 75.1,
+      "round_ms": [
+        15.16,
+        14.51,
+        17.71,
+        14.11,
+        17.25,
+        13.52,
+        13.6,
+        13.32
+      ],
+      "median_ms": 14.31,
+      "contention_pct": 7.4
+    },
+    "effnet_bifpn_cbam": {
+      "label": "EfficientNet+BiFPN+CBAM",
+      "latency_ms": 15.07,
+      "fps": 66.4,
+      "round_ms": [
+        16.78,
+        15.96,
+        17.91,
+        15.07,
+        19.45,
+        15.08,
+        15.27,
+        15.6
+      ],
+      "median_ms": 15.78,
+      "contention_pct": 4.7
+    },
+    "v11s_bifpn_cbam": {
+      "label": "YOLOv11s+BiFPN+CBAM",
+      "latency_ms": 12.57,
+      "fps": 79.6,
+      "round_ms": [
+        13.6,
+        13.51,
+        12.79,
+        13.07,
+        13.61,
+        12.57,
+        12.76,
+        12.9
+      ],
+      "median_ms": 12.98,
+      "contention_pct": 3.3
+    }
+  },
+  "statistic": "minimum of per-round medians; contention can only add time"
+}
