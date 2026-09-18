@@ -16,9 +16,23 @@ What it changes relative to running lib_composite.py directly:
     controlled comparison rather than two ad-hoc runs
   * generation is seeded, so the dataset is reproducible (lib_composite.py ran
     with SEED = None)
+  * train and validation images are built from disjoint objects, disjoint
+    backgrounds and disjoint occluders. Validation used to be the first 15% of
+    composites drawn from one shared pool, so every validation image reused
+    objects and backgrounds the model trained on, and it chose the checkpoint,
+    the threshold and the ensemble weights from data it had memorised. The
+    assignment is written to splits/synthetic_pool<N>.csv so it can be
+    audited.
 
-Run:   python 04_build_dataset.py --pool 200
-       python 04_build_dataset.py --pool 25
+    Validation holds about a fifth of each: 12 of 59 objects. That is enough
+    to choose an epoch, where the decision is coarse and mAP averages over
+    hundreds of boxes, but not to choose a deployment threshold: twelve
+    identities are too few to say how the model treats an unseen one. The
+    threshold question is answered on real photographs instead, by comparing
+    arms at matched false-alarm rates.
+
+Run:   python src/04_build_dataset.py --pool 59
+       python src/04_build_dataset.py --pool 25
 Output: dataset_pool<N>/
 """
 
@@ -32,6 +46,8 @@ import shutil
 import numpy as np
 from PIL import ImageDraw
 
+from lib_arms import DEFAULT_POOL
+
 # This file lives in src/; the data it reads and writes lives beside src/, not
 # inside it. SRC is used for loading sibling modules by path, ROOT for anything
 # on disk.
@@ -43,6 +59,9 @@ BACKGROUNDS = ROOT / "backgrounds"
 
 PREVIEW_COUNT = 12
 
+# Fraction of each identity pool held out for validation.
+VAL_FRACTION = 0.2
+
 
 def _load_compositor():
     """Import lib_composite.py by path (the name is not a valid identifier)."""
@@ -53,26 +72,45 @@ def _load_compositor():
     return mod
 
 
-def materialise_backgrounds():
+def split_identities(items, category_of, rng):
     """
-    make_background() in lib_composite.py reads a directory. Copy the 50
-    photographs assigned to the background role into one, so the generator
-    cannot reach any image held out for evaluation.
+    Assign whole items to train or val, stratified by category.
+
+    Each category with at least two members sends round(VAL_FRACTION * n), and
+    at least one, to validation, so no category is absent from either side.
+    A category with a single member stays in training.
     """
-    BACKGROUNDS.mkdir(exist_ok=True)
-    for old in BACKGROUNDS.iterdir():
-        old.unlink()
-    with open(SPLITS / "organic_bg.csv", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    for i, r in enumerate(rows, 1):
-        src = ROOT / r["path"]
-        shutil.copy2(src, BACKGROUNDS / f"bg_{i:04d}{src.suffix.lower()}")
-    return len(rows)
+    by_cat = {}
+    for it in items:
+        by_cat.setdefault(category_of(it), []).append(it)
+    train, val = [], []
+    for cat in sorted(by_cat):
+        group = sorted(by_cat[cat])
+        rng.shuffle(group)
+        k = max(1, round(VAL_FRACTION * len(group))) if len(group) >= 2 else 0
+        val += group[:k]
+        train += group[k:]
+    return sorted(train), sorted(val)
+
+
+def materialise_backgrounds(assign):
+    """
+    make_background() in lib_composite.py reads a directory. Copy the
+    photographs assigned to the background role into one directory per split,
+    so the generator cannot reach an evaluation image, and a validation
+    composite cannot reach a training background.
+    """
+    if BACKGROUNDS.exists():
+        shutil.rmtree(BACKGROUNDS)
+    for split, paths in assign.items():
+        (BACKGROUNDS / split).mkdir(parents=True)
+        for i, src in enumerate(paths, 1):
+            shutil.copy2(src, BACKGROUNDS / split / f"bg_{i:04d}{src.suffix.lower()}")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=200,
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL,
                     help="number of e-waste cut-outs to draw objects from")
     ap.add_argument("--images", type=int, default=1500)
     ap.add_argument("--seed", type=int, default=0)
@@ -86,8 +124,6 @@ def main():
     out = ROOT / f"dataset_pool{args.pool}"
 
     # ---- point the compositor at the v3 inputs ----
-    n_bg = materialise_backgrounds()
-    C.RAW_ORGANIC = BACKGROUNDS
     C.EWASTE_CUTS = CUTOUTS / "ewaste_clean"   # screened by 03_screen_cutouts.py
     C.ORGANIC_CUTS = CUTOUTS / "organic"
     C.OUT = out
@@ -106,6 +142,41 @@ def main():
     # ablation isolates pool size rather than object identity.
     ewaste_cuts = sorted(random.Random(args.seed).sample(ewaste_all, args.pool))
 
+    # ---- hold out whole identities for validation ----
+    # Each kind gets a stream of its own, independent of generation and of the
+    # other kinds, so the background and occluder assignment does not move when
+    # the pool size does: the pool-size ablation then varies objects only.
+    def split_rng(kind):
+        return random.Random(f"identity-split-{kind}-{args.seed}")
+    with open(CUTOUTS / "extraction_log.csv", encoding="utf-8") as f:
+        cut_cat = {r["output"]: r["category"] for r in csv.DictReader(f)}
+    with open(SPLITS / "organic_bg.csv", encoding="utf-8") as f:
+        bg_rows = [ROOT / r["path"] for r in csv.DictReader(f)]
+
+    ew = dict(zip(("train", "val"),
+                  split_identities(ewaste_cuts, lambda p: cut_cat[p.name], split_rng("ewaste"))))
+    org = dict(zip(("train", "val"),
+                   split_identities(organic_cuts, lambda p: "organic", split_rng("organic"))))
+    bgs = dict(zip(("train", "val"),
+                   split_identities(bg_rows, lambda p: "background", split_rng("background"))))
+    materialise_backgrounds(bgs)
+
+    for kind, assign in (("ewaste", ew), ("organic", org), ("background", bgs)):
+        clash = {p.name for p in assign["train"]} & {p.name for p in assign["val"]}
+        assert not clash, f"{kind} identities in both splits: {sorted(clash)[:3]}"
+
+    with open(SPLITS / f"synthetic_pool{args.pool}.csv", "w", newline="",
+              encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["kind", "split", "category", "name"])
+        for kind, assign, cat in (
+                ("ewaste", ew, lambda p: cut_cat[p.name]),
+                ("organic", org, lambda p: "organic"),
+                ("background", bgs, lambda p: "background")):
+            for split in ("train", "val"):
+                for item in assign[split]:
+                    w.writerow([kind, split, cat(item), item.name])
+
     random.seed(args.seed)
     np.random.seed(args.seed)
 
@@ -117,14 +188,16 @@ def main():
     n_val = int(args.images * C.VAL_SPLIT)
     print(f"Generating {args.images} images "
           f"({args.images - n_val} train / {n_val} val) -> {out.name}")
-    print(f"  e-waste cut-outs: {len(ewaste_cuts)} of {len(ewaste_all)}   "
-          f"organic cut-outs: {len(organic_cuts)}   backgrounds: {n_bg}")
+    for split in ("train", "val"):
+        print(f"  {split:<5} e-waste objects {len(ew[split]):>3}   "
+              f"occluders {len(org[split]):>3}   backgrounds {len(bgs[split]):>3}")
     print(f"  seed: {args.seed}")
 
     empty = 0
     for i in range(args.images):
         split = "val" if i < n_val else "train"
-        img, boxes = C.build_one(ewaste_cuts, organic_cuts)
+        C.RAW_ORGANIC = BACKGROUNDS / split
+        img, boxes = C.build_one(ew[split], org[split])
         name = f"synth_{i:05d}"
 
         img.save(out / "images" / split / f"{name}.jpg", quality=92)
@@ -166,7 +239,8 @@ def main():
           f"p10 {q(0.10):.3f}  p90 {q(0.90):.3f}")
     print(f"  retained at phi >= {C.MIN_VISIBLE_FRAC}: "
           f"{(phi >= C.MIN_VISIBLE_FRAC).mean():.1%}")
-    print(f"\nThen run:  python 05_train.py --pool {args.pool}")
+    print(f"  split assignment: splits/synthetic_pool{args.pool}.csv")
+    print(f"\nThen run:  python src/05_train.py --pool {args.pool}")
 
 
 if __name__ == "__main__":

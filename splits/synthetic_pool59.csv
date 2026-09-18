@@ -1,0 +1,160 @@
+kind,split,category,name
+ewaste,train,electronic chip,ewaste_0001.png
+ewaste,train,smartphones,ewaste_0002.png
+ewaste,train,smartphones,ewaste_0003.png
+ewaste,train,smartphones,ewaste_0004.png
+ewaste,train,electronic chip,ewaste_0005.png
+ewaste,train,electronic chip,ewaste_0006.png
+ewaste,train,electrical cables,ewaste_0007.png
+ewaste,train,electrical cables,ewaste_0009.png
+ewaste,train,electrical cables,ewaste_0010.png
+ewaste,train,electrical cables,ewaste_0011.png
+ewaste,train,electrical cables,ewaste_0013.png
+ewaste,train,electrical cables,ewaste_0015.png
+ewaste,train,electronic chip,ewaste_0018.png
+ewaste,train,electronic chip,ewaste_0019.png
+ewaste,train,electronic chip,ewaste_0020.png
+ewaste,train,electronic chip,ewaste_0021.png
+ewaste,train,electronic chip,ewaste_0023.png
+ewaste,train,electronic chip,ewaste_0024.png
+ewaste,train,electronic chip,ewaste_0025.png
+ewaste,train,electronic chip,ewaste_0028.png
+ewaste,train,electronic chip,ewaste_0029.png
+ewaste,train,electronic chip,ewaste_0030.png
+ewaste,train,electronic chip,ewaste_0031.png
+ewaste,train,electronic chip,ewaste_0033.png
+ewaste,train,electronic chip,ewaste_0034.png
+ewaste,train,electronic chip,ewaste_0035.png
+ewaste,train,electronic chip,ewaste_0036.png
+ewaste,train,electronic chip,ewaste_0037.png
+ewaste,train,electronic chip,ewaste_0039.png
+ewaste,train,electronic chip,ewaste_0040.png
+ewaste,train,electronic chip,ewaste_0041.png
+ewaste,train,smartphones,ewaste_0044.png
+ewaste,train,electronic chip,ewaste_0045.png
+ewaste,train,electronic chip,ewaste_0046.png
+ewaste,train,batteries,ewaste_0048.png
+ewaste,train,batteries,ewaste_0049.png
+ewaste,train,electronic chip,ewaste_0050.png
+ewaste,train,smartphones,ewaste_0053.png
+ewaste,train,smartphones,ewaste_0054.png
+ewaste,train,smartphones,ewaste_0056.png
+ewaste,train,smartphones,ewaste_0057.png
+ewaste,train,smartphones,ewaste_0058.png
+ewaste,train,smartphones,ewaste_0059.png
+ewaste,train,smartphones,ewaste_0060.png
+ewaste,train,smartphones,ewaste_0063.png
+ewaste,train,smartphones,ewaste_0064.png
+ewaste,train,smartphones,ewaste_0066.png
+ewaste,val,electrical cables,ewaste_0008.png
+ewaste,val,electrical cables,ewaste_0012.png
+ewaste,val,electronic chip,ewaste_0016.png
+ewaste,val,electronic chip,ewaste_0017.png
+ewaste,val,electronic chip,ewaste_0022.png
+ewaste,val,electronic chip,ewaste_0026.png
+ewaste,val,electronic chip,ewaste_0027.png
+ewaste,val,electronic chip,ewaste_0042.png
+ewaste,val,batteries,ewaste_0043.png
+ewaste,val,smartphones,ewaste_0052.png
+ewaste,val,smartphones,ewaste_0055.png
+ewaste,val,smartphones,ewaste_0061.png
+organic,train,organic,organic_0001.png
+organic,train,organic,organic_0002.png
+organic,train,organic,organic_0003.png
+organic,train,organic,organic_0004.png
+organic,train,organic,organic_0005.png
+organic,train,organic,organic_0006.png
+organic,train,organic,organic_0007.png
+organic,train,organic,organic_0008.png
+organic,train,organic,organic_0009.png
+organic,train,organic,organic_0012.png
+organic,train,organic,organic_0013.png
+organic,train,organic,organic_0014.png
+organic,train,organic,organic_0015.png
+organic,train,organic,organic_0016.png
+organic,train,organic,organic_0017.png
+organic,train,organic,organic_0018.png
+organic,train,organic,organic_0019.png
+organic,train,organic,organic_0020.png
+organic,train,organic,organic_0021.png
+organic,train,organic,organic_0023.png
+organic,train,organic,organic_0025.png
+organic,train,organic,organic_0026.png
+organic,train,organic,organic_0027.png
+organic,train,organic,organic_0028.png
+organic,train,organic,organic_0029.png
+organic,train,organic,organic_0030.png
+organic,train,organic,organic_0034.png
+organic,train,organic,organic_0035.png
+organic,train,organic,organic_0036.png
+organic,train,organic,organic_0037.png
+organic,train,organic,organic_0038.png
+organic,train,organic,organic_0039.png
+organic,train,organic,organic_0041.png
+organic,train,organic,organic_0042.png
+organic,train,organic,organic_0043.png
+organic,train,organic,organic_0045.png
+organic,train,organic,organic_0047.png
+organic,train,organic,organic_0048.png
+organic,train,organic,organic_0049.png
+organic,train,organic,organic_0050.png
+organic,val,organic,organic_0010.png
+organic,val,organic,organic_0011.png
+organic,val,organic,organic_0022.png
+organic,val,organic,organic_0024.png
+organic,val,organic,organic_0031.png
+organic,val,organic,organic_0032.png
+organic,val,organic,organic_0033.png
+organic,val,organic,organic_0040.png
+organic,val,organic,organic_0044.png
+organic,val,organic,organic_0046.png
+background,train,background,Food Organics_112.jpg
+background,train,background,Food Organics_150.jpg
+background,train,background,Food Organics_175.jpg
+background,train,background,Food Organics_183.jpg
+background,train,background,Food Organics_184.jpg
+background,train,background,Food Organics_185.jpg
+background,train,background,Food Organics_203.jpg
+background,train,background,Food Organics_211.jpg
+background,train,background,Food Organics_239.jpg
+background,train,background,Food Organics_364.jpg
+background,train,background,Food Organics_373.jpg
+background,train,background,Food Organics_374.jpg
+background,train,background,Food Organics_380.jpg
+background,train,background,Food Organics_391.jpg
+background,train,background,Food Organics_410.jpg
+background,train,background,Food Organics_42.jpg
+background,train,background,Food Organics_62.jpg
+background,train,background,Vegetation_139.jpg
+background,train,background,Vegetation_149.jpg
+background,train,background,Vegetation_195.jpg
+background,train,background,Vegetation_20.jpg
+background,train,background,Vegetation_200.jpg
+background,train,background,Vegetation_206.jpg
+background,train,background,Vegetation_219.jpg
+background,train,background,Vegetation_223.jpg
+background,train,background,Vegetation_259.jpg
+background,train,background,Vegetation_289.jpg
+background,train,background,Vegetation_291.jpg
+background,train,background,Vegetation_315.jpg
+background,train,background,Vegetation_329.jpg
+background,train,background,Vegetation_396.jpg
+background,train,background,Vegetation_403.jpg
+background,train,background,Vegetation_404.jpg
+background,train,background,Vegetation_405.jpg
+background,train,background,Vegetation_425.jpg
+background,train,background,Vegetation_429.jpg
+background,train,background,Vegetation_78.jpg
+background,train,background,Vegetation_79.jpg
+background,train,background,Vegetation_88.jpg
+background,train,background,Vegetation_96.jpg
+background,val,background,Food Organics_123.jpg
+background,val,background,Food Organics_227.jpg
+background,val,background,Food Organics_266.jpg
+background,val,background,Food Organics_330.jpg
+background,val,background,Food Organics_67.jpg
+background,val,background,Food Organics_9.jpg
+background,val,background,Food Organics_99.jpg
+background,val,background,Vegetation_203.jpg
+background,val,background,Vegetation_313.jpg
+background,val,background,Vegetation_344.jpg

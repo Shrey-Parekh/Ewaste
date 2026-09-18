@@ -147,13 +147,24 @@ def main():
     if not BACKGROUNDS.exists():
         print("   -- skipped, no backgrounds/")
     else:
-        n_disk = sum(1 for p in BACKGROUNDS.iterdir() if p.is_file())
+        # Split into train/ and val/ by 04_build_dataset.py, so that synthetic
+        # validation never reuses a training background.
+        n_disk = sum(1 for p in BACKGROUNDS.rglob("*") if p.is_file())
         n_manifest = len(roles["organic_bg"])
         if n_disk != n_manifest:
             failures.append("backgrounds holds {} images but the manifest "
                             "lists {}".format(n_disk, n_manifest))
         print("   {}  on disk {}, manifest {}".format(
             "ok " if n_disk == n_manifest else "FAIL", n_disk, n_manifest))
+        sides = [{hashlib.md5(p.read_bytes()).hexdigest()
+                  for p in (BACKGROUNDS / d).glob("*") if p.is_file()}
+                 for d in ("train", "val")]
+        shared = sides[0] & sides[1]
+        if shared:
+            failures.append("{} backgrounds are in both synthetic train and "
+                            "val".format(len(shared)))
+        print("   {}  synthetic train/val backgrounds shared: {}".format(
+            "ok " if not shared else "FAIL", len(shared)))
 
     check_content(failures)
 
