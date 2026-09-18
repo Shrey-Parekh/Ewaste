@@ -33,6 +33,14 @@ import json
 
 import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
 from lib_metrics import best_box_f1, measure_latency
+
+# Confidence floor for member detections entering fusion. This is a property
+# of the fusion, not of the sweep: a lower floor feeds more weak boxes into
+# each cluster and changes every fused score, so it is held at the value the
+# ensemble was designed and measured with, independently of how far down the
+# evaluator sweeps single models. The ensemble is also timed at this floor,
+# since that is how it has to run.
+FUSE_FLOOR = 0.10
 from PIL import Image
 
 from pipeline_common import load_image
@@ -93,7 +101,7 @@ def ensemble_threshold(models, pool, ev, weights):
         images = [load_image(pth) for pth, _ in chunk]
         per_model = []
         for m in models:
-            res = m.predict(images, conf=min(ev.THRESHOLDS), imgsz=ev.IMG_SIZE,
+            res = m.predict(images, conf=FUSE_FLOOR, imgsz=ev.IMG_SIZE,
                             device=ev.DEVICE, verbose=False)
             per_model.append([
                 (r.boxes.conf.cpu().numpy().tolist() if r.boxes is not None else [],
@@ -102,9 +110,7 @@ def ensemble_threshold(models, pool, ev, weights):
         for j, (_, gt) in enumerate(chunk):
             confs, boxes = fuse([pm[j] for pm in per_model], weights)
             per_image.append((confs, boxes, gt))
-    lo, hi = min(ev.THRESHOLDS), max(ev.THRESHOLDS)
-    steps = int(round((hi - lo) / ev.FINE_STEP)) + 1
-    grid = [lo + k * ev.FINE_STEP for k in range(steps)]
+    grid = ev.fine_grid()
     return best_box_f1(per_image, grid)
 
 
@@ -306,8 +312,8 @@ def main():
         print(f"\n=== {label} ===")
         model = ev.load_model(w)
         models.append(model)
-        org_runs.append(ev.run_inference(model, organic, "organic_test"))
-        ew_runs.append(ev.run_inference(model, ewaste, "ewaste_test"))
+        org_runs.append(ev.run_inference(model, organic, "organic_test", FUSE_FLOOR))
+        ew_runs.append(ev.run_inference(model, ewaste, "ewaste_test", FUSE_FLOOR))
 
     print(f"\nFusing {n} models with weighted box fusion, IoU >= {IOU_THR}")
     org_det = fuse_detections(org_runs, weights)
@@ -321,7 +327,7 @@ def main():
     def predict_all(images):
         per = []
         for m in models:
-            r = m.predict(images, conf=min(ev.THRESHOLDS), imgsz=ev.IMG_SIZE,
+            r = m.predict(images, conf=FUSE_FLOOR, imgsz=ev.IMG_SIZE,
                           device=ev.DEVICE, verbose=False)[0]
             confs = r.boxes.conf.cpu().numpy().tolist() if r.boxes is not None else []
             boxes = r.boxes.xyxy.cpu().numpy().tolist() if r.boxes is not None else []
@@ -342,10 +348,8 @@ def main():
     }
 
     rows = [ev.score_at(org_det, ew_det, t, n_org, n_ew) for t in ev.THRESHOLDS]
-    lo, hi = min(ev.THRESHOLDS), max(ev.THRESHOLDS)
-    steps = int(round((hi - lo) / ev.FINE_STEP)) + 1
-    fine_rows = [ev.score_at(org_det, ew_det, lo + i * ev.FINE_STEP, n_org, n_ew)
-                 for i in range(steps)]
+    fine_rows = [ev.score_at(org_det, ew_det, t, n_org, n_ew)
+                 for t in ev.fine_grid()]
 
     best = max(fine_rows, key=lambda r: r["f1"])
     best_coarse = max(rows, key=lambda r: r["f1"])

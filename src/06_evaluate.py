@@ -30,8 +30,8 @@ import json
 from PIL import Image, ImageDraw
 
 import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
-from lib_metrics import (count_gflops, count_parameters, measure_latency,
-                         weight_size_mb)
+from lib_metrics import (LATENCY_CONF, count_gflops, count_parameters,
+                         measure_latency, weight_size_mb)
 from lib_arms import eval_dir_name, run_name
 from pipeline_common import load_image
 
@@ -47,10 +47,13 @@ SPLITS = ROOT / "splits"
 # readable, and unchanged from earlier runs so old reports stay comparable.
 THRESHOLDS = [0.10, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80]
 
-# Searched for the operating point. Inference runs once at min(THRESHOLDS) and
-# every sweep point is just a filter over the stored confidences, so a fine
-# grid costs no extra GPU time -- and the coarse grid demonstrably misses the
-# optimum (0.345 rather than 0.40 on the yolo11s run, +0.006 F1).
+# Inference runs once at INFER_CONF and every sweep point is a filter over the
+# stored confidences, so the fine grid costs no extra GPU time. The floor used
+# to be 0.10, which censored two things: the oracle search, whose optimum sat
+# at 0.135 and 0.160 for two arms, and the matched-false-alarm comparison,
+# which cannot reach a false-alarm budget an arm only meets below the floor.
+# 0.01 puts the floor well below any threshold either could need.
+INFER_CONF = 0.01
 FINE_STEP = 0.005
 IMG_SIZE = 640
 DEVICE = 0
@@ -72,7 +75,13 @@ def read_manifest(name: str):
         return [(r["category"], ROOT / r["path"]) for r in csv.DictReader(f)]
 
 
-def run_inference(model, rows, label):
+def fine_grid():
+    """The fine sweep, from the inference floor to the top of the coarse grid."""
+    n = int(round((max(THRESHOLDS) - INFER_CONF) / FINE_STEP)) + 1
+    return [round(INFER_CONF + i * FINE_STEP, 4) for i in range(n)]
+
+
+def run_inference(model, rows, label, conf=INFER_CONF):
     """Detect once at the lowest threshold; filter afterwards for each sweep point."""
     print(f"  {label}: {len(rows)} real images")
     out = []
@@ -80,7 +89,7 @@ def run_inference(model, rows, label):
         chunk = rows[i:i + BATCH]
         images = [load_image(p) for _, p in chunk]
         results = model.predict(images,
-                                conf=min(THRESHOLDS), imgsz=IMG_SIZE,
+                                conf=conf, imgsz=IMG_SIZE,
                                 device=DEVICE, verbose=False)
         for (category, p), r in zip(chunk, results):
             confs = r.boxes.conf.cpu().numpy().tolist() if r.boxes is not None else []
@@ -212,7 +221,7 @@ def main():
     print('\n=== C) COST: single-image latency on real photographs ===')
     warm = [load_image(path) for _, path in ewaste[:LATENCY_WARMUP + LATENCY_SAMPLE]]
     latency_ms, fps = measure_latency(
-        lambda ims: model.predict(ims, conf=min(THRESHOLDS), imgsz=IMG_SIZE,
+        lambda ims: model.predict(ims, conf=LATENCY_CONF, imgsz=IMG_SIZE,
                                   device=DEVICE, verbose=False),
         warm, warmup=LATENCY_WARMUP, sample=LATENCY_SAMPLE)
     del warm
@@ -230,10 +239,7 @@ def main():
     rows = [score_at(org_det, ew_det, t, n_org, n_ew) for t in THRESHOLDS]
 
     # Fine search for the actual operating point. Free: no extra inference.
-    lo, hi = min(THRESHOLDS), max(THRESHOLDS)
-    n_steps = int(round((hi - lo) / FINE_STEP)) + 1
-    fine_rows = [score_at(org_det, ew_det, lo + i * FINE_STEP, n_org, n_ew)
-                 for i in range(n_steps)]
+    fine_rows = [score_at(org_det, ew_det, t, n_org, n_ew) for t in fine_grid()]
 
     with open(out / "threshold_sweep.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))

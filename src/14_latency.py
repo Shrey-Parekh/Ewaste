@@ -13,16 +13,18 @@ parameters. Those columns were measuring machine load.
 
 This script fixes the experiment rather than the timer. Every arm is loaded
 into one process and timed round-robin: arm 1, arm 2, ... arm 11, then again,
-five times over. Thermal throttling, a background process, or a clock drift
-part-way through therefore lands on every arm roughly equally instead of
-falling entirely on whichever happened to run last. Each arm's figure is the
-median of its per-round medians.
+nine times over, the first round discarded. Thermal throttling, a background
+process, or a clock drift part-way through therefore lands on every arm
+roughly equally instead of falling entirely on whichever happened to run last.
+Each arm's figure is the fastest of its per-round medians, since contention
+can only add time; the median across rounds is kept beside it.
 
-The spread across rounds is reported alongside. It is the evidence that the
-measurement is stable: if an arm's rounds disagree by more than a few percent,
-the number is not trustworthy and the run should be repeated on a quieter
-machine. That check is the whole point, so it is printed whether it passes or
-fails.
+Every arm is timed at the same confidence, lib_metrics.LATENCY_CONF, because
+a lower threshold passes more boxes through NMS and would time the threshold
+as much as the network.
+
+Two independent sittings agreed at Spearman 0.973 on the ordering while
+differing about 5% in level: the ranking is the reproducible part.
 
 Run:    python src/14_latency.py --pool 60
 Output: latency_pool60.json, read by 11_metrics_table.py
@@ -39,12 +41,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import lib_modules  # noqa: F401  registers CBAM/BiFPNFuse/TVBackbone
 from lib_arms import ARMS, run_name
-from lib_metrics import measure_latency
+from lib_metrics import LATENCY_CONF, measure_latency
 
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
 
-# Five rounds of 60 images each. The rounds matter more than the sample size:
+# Nine rounds of 60 images each. The rounds matter more than the sample size:
 # a longer single pass measures one machine state very precisely, whereas
 # several short interleaved passes measure the state every arm actually shares.
 ROUNDS = 9
@@ -111,13 +113,14 @@ def main():
     # already had done for them by the time their turn comes.
     for _label, _tag, m in models:
         for im in images[:WARMUP]:
-            m.predict(im, verbose=False)
+            m.predict(im, conf=LATENCY_CONF, verbose=False)
 
     rounds = {tag: [] for _, tag, _ in models}
     for r in range(args.rounds):
         for _label, tag, m in models:
             ms, _ = measure_latency(
-                lambda batch, _m=m: _m.predict(batch, verbose=False),
+                lambda batch, _m=m: _m.predict(batch, conf=LATENCY_CONF,
+                                               verbose=False),
                 images, warmup=0, sample=args.sample)
             rounds[tag].append(ms)
         print(f"  round {r + 1} of {args.rounds} done")

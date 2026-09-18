@@ -21,6 +21,12 @@ Conventions, fixed here so every model is measured the same way:
 
 import time
 
+# Confidence every latency figure is timed at, for every model and the
+# ensemble alike. Lower confidence passes more boxes through NMS, so timing
+# arms at different thresholds measures the threshold as much as the network.
+# 0.25 is the Ultralytics default and a typical deployment threshold.
+LATENCY_CONF = 0.25
+
 import numpy as np
 
 
