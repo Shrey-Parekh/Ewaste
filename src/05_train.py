@@ -46,17 +46,27 @@ ROOT = SRC.parent
 # to a nominal batch of 64, so 16 and 32 perform identical optimisation and
 # only the memory ceiling differs.
 TRAIN_CFG = dict(
-    # A ceiling, not a schedule: patience below is what is meant to end a run.
-    # At 120, only 2 of 11 arms ever reached the patience criterion; three
-    # were still improving at the cap (best epoch 119 or 120, one gaining
-    # +0.021 mAP50-95 over its last ten epochs), so the budget, not
-    # convergence, decided where they stopped. That made "weak architecture"
-    # and "stopped early" indistinguishable for exactly the arm that looked
-    # weakest. 250 leaves every arm room for patience to fire first.
-    epochs=250,
+    # One fixed schedule for every arm, with early stopping off.
+    #
+    # In Ultralytics, epochs is not only a ceiling. The learning rate decays
+    # linearly over it, and mosaic augmentation switches off for the final
+    # close_mosaic epochs. With early stopping, an arm that stops on patience
+    # never reaches that low-rate, mosaic-off phase, while an arm that keeps
+    # improving does -- so arms end up trained on different schedules, and
+    # which one an arm got depends on the arm. That phase is worth measuring:
+    # in the previous round it lifted the best mAP50-95 of four arms by
+    # 0.007 to 0.021, the "still improving at the cap" pattern, which was the
+    # schedule working as designed rather than truncation. The two arms that
+    # did stop early were stopped before it and never got it.
+    #
+    # So every arm now runs the same number of epochs, and best.pt is chosen
+    # on the held-out synthetic validation split. patience=0 disables
+    # Ultralytics' early stopping. 150 gives the newly initialised necks more
+    # steps than the previous 120 at a cost of about three GPU-hours.
+    epochs=150,
     imgsz=640,
     batch=16,
-    patience=30,
+    patience=0,
     seed=0,
     deterministic=True,
     device=0,
@@ -193,9 +203,11 @@ def main():
                          "full run. These are additional to --epochs, not taken "
                          "out of it. 0 disables.")
     ap.add_argument("--resume", action="store_true",
-                    help="continue an interrupted run from weights/last.pt in "
-                         "its run directory, exactly where it stopped -- same "
-                         "optimizer state, same epoch, same LR schedule")
+                    help="continue an interrupted main run from weights/last.pt "
+                         "in its run directory, exactly where it stopped -- same "
+                         "optimizer state, same epoch, same LR schedule. A run "
+                         "interrupted during warm-up cannot be resumed; delete "
+                         "both its directories and start again")
     ap.add_argument("--workers", type=int, default=TRAIN_CFG["workers"],
                     help="dataloader workers. Changes speed and host RAM, and "
                          "also the augmentation stream: each worker seeds its "
@@ -211,7 +223,7 @@ def main():
     data = ROOT / f"dataset_pool{args.pool}" / "data.yaml"
     if not data.exists():
         print(f"[!] {data} not found. Run 04_build_dataset.py --pool {args.pool} first.")
-        return
+        return 1
 
     name = run_name(args.pool, args.tag, args.seed)
     detect_dir = ROOT / "runs" / "detect"
@@ -229,7 +241,7 @@ def main():
             for d in clash:
                 print(f"      {d.relative_to(ROOT).as_posix()}")
             print("    move or delete it to retrain, or pass --resume to continue it.")
-            return
+            return 1
 
     # Built unconditionally: the summary below reports batch/imgsz regardless
     # of which branch trained, and a resumed run never rebuilds this dict.
@@ -239,7 +251,7 @@ def main():
         last = detect_dir / name / "weights" / "last.pt"
         if not last.exists():
             print(f"[!] no checkpoint to resume: {last}")
-            return
+            return 1
         weights = None
         model = YOLO(str(last))
         t0 = time.time()
@@ -268,7 +280,7 @@ def main():
             # weights that were already right.
             print(f"[+] warm-up: {args.warmup_epochs} epochs with layers "
                   f"0-{depth - 1} frozen")
-            model.train(data=str(data), name=warm_name,
+            model.train(data=str(data), project=str(detect_dir), name=warm_name,
                         **dict(cfg, epochs=args.warmup_epochs, freeze=depth))
             # Where Ultralytics actually wrote it, not where it was asked to.
             warmed = Path(model.trainer.save_dir) / "weights" / "last.pt"
@@ -277,7 +289,10 @@ def main():
             model = YOLO(str(warmed))
             print(f"[+] warm-up complete, continuing from {warmed}")
 
-        model.train(data=str(data), name=name, **cfg)
+        # project= pins the run under ROOT/runs/detect. Without it Ultralytics
+        # resolves "runs" against the working directory, so launching from
+        # src/ would train into src/runs, past the refusal check above.
+        model.train(data=str(data), project=str(detect_dir), name=name, **cfg)
         train_seconds = time.time() - t0
 
     # Every output below goes where training actually wrote, read back from the
@@ -299,8 +314,11 @@ def main():
     summary = {
         "pool": args.pool,
         "seed": args.seed,
-        "model": args.model,
-        "pretrained_from": weights,
+        # A resumed run does not know which architecture or checkpoint it was
+        # started from; recording the --model default here would be wrong.
+        "model": None if args.resume else args.model,
+        "pretrained_from": None if args.resume else weights,
+        "resumed": args.resume,
         "epochs": args.epochs,
         "batch": cfg["batch"],
         "warmup_epochs": args.warmup_epochs if freeze_depth(args.model) else 0,
@@ -330,4 +348,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Non-zero on refusal or missing input, so the launcher stops its queue
+    # instead of going on to evaluate a run that never trained.
+    raise SystemExit(main())
