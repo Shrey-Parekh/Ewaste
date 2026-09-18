@@ -224,6 +224,16 @@ def main():
     if not data.exists():
         print(f"[!] {data} not found. Run 04_build_dataset.py --pool {args.pool} first.")
         return 1
+    # Only a dataset built with held-out synthetic validation has this record.
+    # An older one on disk -- dataset_pool60 was built from a pool containing
+    # copies of test photographs, with validation drawn from the training
+    # objects -- would otherwise train without complaint.
+    if not (ROOT / "splits" / f"synthetic_pool{args.pool}.csv").exists():
+        print(f"[!] {data.parent.name} has no splits/synthetic_pool{args.pool}.csv, so it "
+              "predates held-out synthetic validation.")
+        print(f"    rebuild it with 04_build_dataset.py --pool {args.pool}, or use "
+              f"--pool {DEFAULT_POOL}.")
+        return 1
 
     name = run_name(args.pool, args.tag, args.seed)
     detect_dir = ROOT / "runs" / "detect"
@@ -251,6 +261,12 @@ def main():
         last = detect_dir / name / "weights" / "last.pt"
         if not last.exists():
             print(f"[!] no checkpoint to resume: {last}")
+            return 1
+        # Ultralytics marks a finished run's last.pt with epoch -1; resuming it
+        # does not resume, it silently starts a fresh default run elsewhere.
+        import torch
+        if torch.load(last, map_location="cpu", weights_only=False).get("epoch", -1) < 0:
+            print(f"[!] {name} already finished training; there is nothing to resume.")
             return 1
         weights = None
         model = YOLO(str(last))
@@ -321,8 +337,9 @@ def main():
         "resumed": args.resume,
         "epochs": args.epochs,
         "batch": cfg["batch"],
-        "warmup_epochs": args.warmup_epochs if freeze_depth(args.model) else 0,
-        "warmup_frozen_layers": freeze_depth(args.model),
+        "warmup_epochs": (None if args.resume
+                          else args.warmup_epochs if freeze_depth(args.model) else 0),
+        "warmup_frozen_layers": None if args.resume else freeze_depth(args.model),
         "imgsz": cfg["imgsz"],
         "dataset": data.parent.name,
         "precision": float(metrics.box.mp),
