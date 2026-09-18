@@ -38,10 +38,13 @@ Run:    python src/11_metrics_table.py --pool 54
 Output: printed table, plus Manuscripts/tables/metrics_table.{csv,tex}
 """
 
+from bisect import bisect_left
 from pathlib import Path
 import argparse
 import csv
 import json
+import sys
+import tempfile
 
 from lib_arms import DEFAULT_POOL, MEMBERS, eval_dir_name, run_name
 
@@ -91,25 +94,68 @@ def read_json(path):
 
 def detection_at_fa(eval_dir, targets=MATCHED_FA):
     """
-    Detection rate at each target false-alarm rate, from the fine sweep.
+    Detection rate at each target false-alarm rate, and which targets were
+    censored by the inference floor.
 
-    Takes the highest detection rate whose false-alarm rate does not exceed the
-    target. The false-alarm rate used is the test set's own, so this is a way
-    of comparing arms at equal cost, not a threshold a deployer could have set
-    beforehand -- a deployer does not have the test set. Where no threshold in
-    the sweep meets the target the entry is None, never an extrapolation.
+    An image fires at threshold t when its highest detection confidence is at
+    least t, so every distinct per-image confidence is a threshold at which a
+    rate can change, and nothing between two of them can. Sweeping exactly
+    those gives the exact answer; the 0.005-step grid used before could step
+    over the threshold where the false-alarm rate crossed its budget, and read
+    detection up to a point low.
+
+    The false-alarm rate used is the test set's own, so this compares arms at
+    equal cost; it is not a threshold a deployer could have set beforehand.
+
+    A target is censored when even the lowest threshold available -- every
+    image with any stored detection fires -- stays within the budget: a lower
+    inference floor might then have reached more detections, so the value is
+    a lower bound.
     """
-    path = eval_dir / "threshold_sweep_fine.csv"
+    path = eval_dir / "per_image.csv"
     if not path.exists():
-        return {t: None for t in targets}
+        return {t: None for t in targets}, []
+    org, ew = [], []
     with open(path, newline="", encoding="utf-8") as f:
-        rows = [(float(r["organic_FP_rate"]), float(r["ewaste_detection_rate"]))
-                for r in csv.DictReader(f)]
-    out = {}
-    for t in targets:
-        under = [d for fa, d in rows if fa <= t]
-        out[t] = max(under) if under else None
-    return out
+        for r in csv.DictReader(f):
+            c = float(r["max_conf"]) if r["max_conf"] else None
+            (org if r["role"] == "organic_test" else ew).append(c)
+    fired_org = sorted(c for c in org if c is not None)
+    fired_ew = sorted(c for c in ew if c is not None)
+
+    def rate(confs, n, t):
+        return (len(confs) - bisect_left(confs, t)) / n
+
+    thresholds = sorted(set(fired_org) | set(fired_ew))
+    out, censored = {}, []
+    for target in targets:
+        # a threshold above every confidence always meets the budget, at 0
+        ok = [rate(fired_ew, len(ew), t) for t in thresholds
+              if rate(fired_org, len(org), t) <= target]
+        out[target] = max(ok, default=0.0)
+        if thresholds and rate(fired_org, len(org), thresholds[0]) <= target:
+            censored.append(target)
+    return out, censored
+
+
+def _check():
+    """detection_at_fa on a case small enough to work by hand."""
+    # organic max confidences 0.9, 0.5, 0.3 and seven that never fire (n=10);
+    # e-waste 0.95, 0.8, 0.6, 0.4, 0.2 and one that never fires (n=6).
+    # Thresholds 0.2 0.3 0.4 0.5 0.6 0.8 0.9 0.95 give false alarms
+    # .3 .3 .2 .2 .1 .1 .1 0 and detections 5 4 4 3 3 2 1 1 (of 6).
+    rows = ([("organic_test", c) for c in (0.9, 0.5, 0.3)] + [("organic_test", "")] * 7
+            + [("ewaste_test", c) for c in (0.95, 0.8, 0.6, 0.4, 0.2)] + [("ewaste_test", "")])
+    with tempfile.TemporaryDirectory() as d:
+        with open(Path(d) / "per_image.csv", "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["role", "category", "path", "n_boxes", "max_conf"])
+            w.writerows([role, "x", "p", 1, c] for role, c in rows)
+        got, cens = detection_at_fa(Path(d), (0.0, 0.10, 0.20, 0.30))
+    assert got == {0.0: 1 / 6, 0.10: 3 / 6, 0.20: 4 / 6, 0.30: 5 / 6}, got
+    # only the 30% budget is met at the lowest threshold, so only it is censored
+    assert cens == [0.30], cens
+    print("detection_at_fa: ok")
 
 
 def convergence(pool, suffix):
@@ -156,7 +202,7 @@ def collect(pool, label, suffix, latency=None):
     oracle = summary.get("real_best") or {}
     at_synth = summary.get("headline") or {}
 
-    matched = detection_at_fa(eval_dir)
+    matched, censored = detection_at_fa(eval_dir)
     timed = (latency or {}).get(suffix)
     params = cap.get("n_params")
     train_s = synth.get("train_seconds")
@@ -184,6 +230,7 @@ def collect(pool, label, suffix, latency=None):
         "epochs_run": epochs_run,
         "best_epoch": best_epoch,
         "train_min": None if train_s is None else train_s / 60,
+        "censored": censored,
     }
 
 
@@ -227,6 +274,11 @@ def main():
     if missing:
         print(f"not yet evaluated: {', '.join(missing)}")
 
+    for r in rows:
+        if r["censored"]:
+            budgets = ", ".join(f"{t:.0%}" for t in r["censored"])
+            print(f"[!] {r['model']}: detection at {budgets} FA is a lower bound -- "
+                  "its false-alarm rate stays within budget even at the inference floor")
     print("Compare arms on the Det@FA columns. The synthetic-threshold columns "
           "sit at a")
     print("different point of each arm's curve and are not comparable across arms.")
@@ -256,4 +308,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--check" in sys.argv:
+        _check()
+    else:
+        main()

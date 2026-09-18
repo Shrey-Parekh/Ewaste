@@ -378,7 +378,7 @@ def main():
         for role, dets in (("organic_test", org_det), ("ewaste_test", ew_det)):
             for category, p, confs, _ in dets:
                 writer.writerow([role, category, p.relative_to(ROOT).as_posix(),
-                                 len(confs), round(max(confs), 4) if confs else ""])
+                                 len(confs), round(max(confs), 6) if confs else ""])
 
     lines = []
 
