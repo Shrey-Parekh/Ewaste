@@ -2,7 +2,8 @@
 lib_metrics.py
 --------------
 The model-characterisation metrics the paper reports alongside detection
-accuracy: capacity, cost and localisation quality.
+accuracy: capacity and cost, plus the box matching the ensemble uses to pick
+its threshold on synthetic validation.
 
 Kept separate from the trainer and the evaluator because both need it. Where
 an optional dependency is missing -- thop, for FLOPs -- the metric is reported
@@ -16,9 +17,6 @@ Conventions, fixed here so every model is measured the same way:
   * Latency times the whole predict call -- preprocess, forward and NMS -- on
     already-decoded images, at batch 1. Disk decode is excluded because it
     measures the storage, not the detector.
-  * mIoU and Dice are computed over matched detections only. A ground truth
-    the model never found has no IoU to average; it is a recall failure and is
-    counted there instead.
 """
 
 import time
@@ -164,25 +162,3 @@ def best_box_f1(per_image, grid, iou_thr=0.5):
         if f1 > best_f1:
             best_conf, best_f1 = conf, f1
     return float(best_conf), float(best_f1)
-
-
-def localisation_summary(all_ious, n_gt, iou_thr=0.5):
-    """
-    Aggregate matched IoUs into the mIoU and Dice the paper reports.
-
-    For an axis-aligned box, Dice is exactly 2*IoU/(1+IoU) -- a monotone
-    transform, so it ranks models identically to mIoU and carries no
-    independent evidence. It is computed because it was asked for, and this
-    relationship is stated wherever it appears.
-    """
-    if not all_ious:
-        return {"mIoU": None, "dice": None, "n_matched": 0, "n_gt": n_gt,
-                "iou_thr": iou_thr}
-    a = np.asarray(all_ious, dtype=float)
-    return {
-        "mIoU": round(float(a.mean()), 4),
-        "dice": round(float((2 * a / (1 + a)).mean()), 4),
-        "n_matched": len(a),
-        "n_gt": n_gt,
-        "iou_thr": iou_thr,
-    }

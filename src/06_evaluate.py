@@ -30,8 +30,8 @@ import json
 from PIL import Image, ImageDraw
 
 import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
-from lib_metrics import (count_gflops, count_parameters, localisation_summary,
-                         match_ious, measure_latency, weight_size_mb)
+from lib_metrics import (count_gflops, count_parameters, measure_latency,
+                         weight_size_mb)
 from lib_arms import eval_dir_name, run_name
 from pipeline_common import load_image
 
@@ -42,9 +42,6 @@ from pipeline_common import load_image
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
 SPLITS = ROOT / "splits"
-# Hand-drawn boxes for ewaste_test, written by 09_annotate.py. Optional: when
-# absent, everything except mIoU and Dice is still reported.
-ANNOTATIONS = ROOT / "annotations" / "ewaste_test"
 
 # Reported in the sweep table -- kept coarse so the printed report stays
 # readable, and unchanged from earlier runs so old reports stay comparable.
@@ -73,86 +70,6 @@ def load_model(weights):
 def read_manifest(name: str):
     with open(SPLITS / f"{name}.csv", encoding="utf-8") as f:
         return [(r["category"], ROOT / r["path"]) for r in csv.DictReader(f)]
-
-
-def load_annotations(rows):
-    """
-    Read hand-drawn boxes for the e-waste test photographs.
-
-    Stored in YOLO format -- class, centre x, centre y, width, height, all
-    normalised -- so they are converted to pixel xyxy against each image's own
-    dimensions. Only the header is read to get those, not the pixel data.
-    Returns {path: [[x1,y1,x2,y2], ...]} for the images that have a file.
-    """
-    if not ANNOTATIONS.is_dir():
-        return {}
-    out = {}
-    for _, path in rows:
-        label = ANNOTATIONS / f"{path.stem}.txt"
-        if not label.exists():
-            continue
-        with Image.open(path) as im:
-            w, h = im.size
-        boxes = []
-        for line in label.read_text(encoding="utf-8").splitlines():
-            parts = line.split()
-            if len(parts) != 5:
-                continue
-            _, cx, cy, bw, bh = (float(v) for v in parts)
-            boxes.append([(cx - bw / 2) * w, (cy - bh / 2) * h,
-                          (cx + bw / 2) * w, (cy + bh / 2) * h])
-        out[path] = boxes
-    return out
-
-
-def localisation_at(ew_det, truth, conf):
-    """
-    mIoU and Dice over detections that survive `conf`, against hand-drawn boxes,
-    plus the per-image counts needed to interpret them.
-
-    The counts matter because a bare match rate is ambiguous. A model that fires
-    once on a photograph holding three annotated objects can match at most one
-    of them however well it is aimed, so a low ratio of matches to ground truths
-    may be arithmetic rather than mislocalisation. The ceiling below,
-    sum(min(detections, ground truths)) over images, is the most matches that
-    were even possible; comparing the actual total against it separates the two.
-    """
-    if not truth:
-        return None, []
-    matched, n_gt, rows = [], 0, []
-    for _, path, confs, boxes in ew_det:
-        gt = truth.get(path)
-        if gt is None:
-            continue
-        n_gt += len(gt)
-        kept = [(c, b) for c, b in zip(confs, boxes) if c >= conf]
-        ious = match_ious([b for _, b in kept], [c for c, _ in kept], gt)
-        matched += ious
-        rows.append({
-            "path": path,
-            "n_gt": len(gt),
-            "n_detections": len(kept),
-            "n_matched": len(ious),
-            "ceiling": min(len(kept), len(gt)),
-            "best_iou": round(max(ious), 4) if ious else 0.0,
-        })
-    summary = localisation_summary(matched, n_gt)
-
-    fired = [r for r in rows if r["n_detections"]]
-    hit = [r for r in rows if r["n_matched"]]
-    ceiling = sum(r["ceiling"] for r in rows)
-    summary.update({
-        "n_images": len(rows),
-        "n_images_fired": len(fired),
-        "n_images_with_a_match": len(hit),
-        "match_ceiling": ceiling,
-        # of the matches that were geometrically possible, how many landed
-        "ceiling_utilisation": round(summary["n_matched"] / ceiling, 4) if ceiling else None,
-        # when the model fires on an annotated photograph, how often does any
-        # of its boxes actually land on an annotated object
-        "hit_rate_given_fired": round(len(hit) / len(fired), 4) if fired else None,
-    })
-    return summary, rows
 
 
 def run_inference(model, rows, label):
@@ -310,8 +227,6 @@ def main():
         "fps": fps,
     }
 
-    truth = load_annotations(ewaste)
-
     rows = [score_at(org_det, ew_det, t, n_org, n_ew) for t in THRESHOLDS]
 
     # Fine search for the actual operating point. Free: no extra inference.
@@ -340,10 +255,8 @@ def main():
                 w.writerow([role, category, p.relative_to(ROOT).as_posix(),
                             len(confs), round(max(confs), 4) if confs else ""])
 
-    # Order matters below, and each step needs the one before it: the tuned
-    # optimum, then the threshold carried over from synthetic validation, then
-    # the operating point chosen between them, then the localisation measured
-    # at that point, and only then the file it is written to.
+    # Order matters below: the tuned optimum, then the threshold carried over
+    # from synthetic validation, then the operating point chosen between them.
     best = max(fine_rows, key=lambda r: r["f1"])
     best_coarse = max(rows, key=lambda r: r["f1"])
 
@@ -367,17 +280,6 @@ def main():
     headline = at_synth if at_synth is not None else best
     headline_source = ("synthetic validation" if at_synth is not None
                        else "TEST SET -- no synthetic threshold available")
-
-    localisation, loc_rows = localisation_at(ew_det, truth, headline["confidence"])
-
-    if loc_rows:
-        with open(out / "localisation_per_image.csv", "w", newline="",
-                  encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["path", "n_gt", "n_detections",
-                                              "n_matched", "ceiling", "best_iou"])
-            w.writeheader()
-            for r in loc_rows:
-                w.writerow(dict(r, path=r["path"].relative_to(ROOT).as_posix()))
 
     lines = []
 
@@ -448,17 +350,9 @@ def main():
     emit("  positive rate on real CONTAMINATED waste, because no such imagery")
     emit("  exists.")
     emit()
-    if not truth:
-        emit("  LIMITATION: detection rate counts an e-waste photograph as detected")
-        emit("  when the model fires ANYWHERE in the frame. ewaste_test carries no")
-        emit("  ground-truth boxes, so a detection landing on background still")
-        emit("  counts. Treat the figure as an upper bound, and describe it as the")
-        emit("  model firing on the image rather than localising the object.")
-    else:
-        emit("  Detection rate counts a photograph as detected when the model fires")
-        emit("  anywhere in the frame. The mIoU below is measured against the")
-        emit("  hand-drawn boxes and is what shows whether those firings actually")
-        emit("  landed on the object.")
+    emit("  SCOPE: this is image-level screening. A photograph counts as")
+    emit("  detected when the model fires anywhere in the frame; whether the")
+    emit("  box lands on the object is not measured and not claimed.")
     emit()
     emit("-" * 74)
     emit("COST")
@@ -469,38 +363,6 @@ def main():
          else "  GFLOPs     unavailable (thop not installed in this environment)")
     emit(f"  weights    {capacity['model_size_mb']} MB")
     emit(f"  latency    {latency_ms} ms per image at batch 1, {fps} FPS")
-    emit()
-    emit("-" * 74)
-    emit("LOCALISATION")
-    emit("-" * 74)
-    if localisation is None:
-        emit("  no hand-drawn boxes found under annotations/ewaste_test.")
-        emit("  Run 09_annotate.py to enable mIoU and Dice.")
-    elif localisation["n_matched"] == 0:
-        emit(f"  {localisation['n_gt']} boxes annotated, none matched at "
-             f"conf {best['confidence']:.3f}")
-    else:
-        emit(f"  annotated boxes {localisation['n_gt']}, matched "
-             f"{localisation['n_matched']} at IoU >= {localisation['iou_thr']}")
-        emit(f"  mIoU {localisation['mIoU']:.4f}    Dice {localisation['dice']:.4f}")
-        emit("  Averaged over matched detections only; an object the model never")
-        emit("  found has no IoU and is counted as a recall failure instead.")
-        emit()
-        emit(f"  annotated photographs {localisation['n_images']}, "
-             f"model fired on {localisation['n_images_fired']}, "
-             f"landed on an object in {localisation['n_images_with_a_match']}")
-        if localisation["hit_rate_given_fired"] is not None:
-            emit(f"  when it fires, it hits an annotated object "
-                 f"{localisation['hit_rate_given_fired']:.1%} of the time")
-        if localisation["ceiling_utilisation"] is not None:
-            emit(f"  matches {localisation['n_matched']} of the "
-                 f"{localisation['match_ceiling']} that were geometrically "
-                 f"possible ({localisation['ceiling_utilisation']:.1%})")
-            emit("  A low ratio of matches to annotated boxes is partly arithmetic:")
-            emit("  one detection cannot match several objects in one frame. The")
-            emit("  ceiling figure is the comparison that is not confounded by that.")
-        emit("  For an axis-aligned box Dice is exactly 2*IoU/(1+IoU), so it")
-        emit("  ranks models identically to mIoU and adds no new evidence.")
     emit()
     emit("=" * 74)
 
@@ -521,7 +383,6 @@ def main():
         "real_best_coarse_grid": best_coarse,  # what earlier runs reported
         "real_at_synthetic_conf": at_synth,
         "capacity": capacity,
-        "localisation": localisation,
         "fine_step": FINE_STEP,
         "sweep": rows,
     }

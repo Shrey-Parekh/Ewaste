@@ -7,23 +7,34 @@ Collects every evaluated model into the one table the paper reports, so that
 It reads the summaries written by 06_evaluate.py and 10_ensemble.py and emits
 the same table three ways: printed for reading, CSV for further work, and a
 LaTeX tabular for the manuscript. A metric a model genuinely does not have --
-FLOPs where thop is not installed, or mIoU before the test
-photographs have been annotated -- is printed as a dash. It is never filled in
-with a plausible-looking number.
+FLOPs where thop is not installed, training time for the ensemble -- is
+printed as a dash. It is never filled in with a plausible-looking number.
 
-Every rate in this table is taken at the operating point chosen on held-out
-data, never at the threshold that happens to maximise F1 on the test set.
-Selecting a threshold on the same data it is then scored against is optimistic
-by construction, and measured across these architectures the gap reached
-+0.070 F1 on one of them. The tuned figure is carried as a separate "Oracle"
-column so the distance between the two stays visible.
+What the paper measures is image-level screening: does a photograph that
+contains e-waste raise an alarm, and does one that contains none stay quiet.
+Where the box lands is not measured and not claimed.
 
-Detection rate and false-alarm rate lead the table. Precision and F1 follow,
-but both depend on the 400:747 ratio of positives to negatives in the test
-split, which is an artefact of how the split was drawn rather than a
-real-world prevalence of contamination.
+The columns are ordered by how much weight they can bear.
 
-Run:    python 11_metrics_table.py --pool 60
+  Detection at a matched false-alarm rate leads. Every arm is read at the same
+  false-alarm budget, so differences are attributable to the model. This is a
+  comparison protocol: the budget is met using the test set's own false-alarm
+  rate, so it is not an operating point anyone could have chosen in advance.
+
+  Detection and false-alarm rate at the synthetic threshold follow. That
+  threshold is the argmax of an F1 curve which is nearly flat -- measured
+  0.10-0.30 wide within 0.02 of its peak even on leak-free real data -- so
+  where it lands is close to arbitrary and these columns are not comparable
+  across arms. They are kept because they are what a deployment without real
+  calibration data would actually get.
+
+  The oracle column is detection at the test-set-optimal F1 threshold: an
+  upper bound that assumes the answer is known, not a result.
+
+Precision and F1 depend on the 400:747 ratio of positives to negatives in the
+test split, an artefact of how it was drawn rather than a real prevalence.
+
+Run:    python src/11_metrics_table.py --pool 60
 Output: printed table, plus Manuscripts/tables/metrics_table.{csv,tex}
 """
 
@@ -32,54 +43,39 @@ import argparse
 import csv
 import json
 
-# False-alarm rates the arms are compared at. Each arm's reported threshold was
-# chosen independently on synthetic validation, and those thresholds land
-# anywhere from 0.155 to 0.500, so the headline detection rates are read off
-# different points of each arm's ROC curve and are not comparable with each
-# other. Detection read at a common false-alarm rate is.
-MATCHED_FA = (0.05, 0.10, 0.15)
+from lib_arms import MEMBERS, eval_dir_name, run_name
 
-# This file lives in src/; the data it reads and writes lives beside src/, not
-# inside it. SRC is used for loading sibling modules by path, ROOT for anything
-# on disk.
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
 OUT = ROOT / "Manuscripts" / "tables"
 
-# (label, run/eval suffix). Order is the order the paper presents them in.
-# Every arm from the one shared list, in its presentation order, plus the
-# ensemble, which is not a trainable arm and so is not in that list.
-from lib_arms import MEMBERS, eval_dir_name  # noqa: E402
-
+# Order is the order the paper presents them in: every arm from the one shared
+# list, then the ensemble, which is not a trainable arm.
 MODELS = MEMBERS + [("Ensemble", "ensemble")]
+
+# False-alarm budgets the arms are compared at.
+MATCHED_FA = (0.05, 0.10, 0.15)
 
 COLUMNS = [
     ("Model", "model", "{}"),
-    ("Detect %", "detect_rate", "{:.1f}"),
-    ("FA %", "fa_rate", "{:.1f}"),
-    # Detection at a common false-alarm budget. These are the columns to
-    # compare architectures on; Detect % above is each arm at its own
-    # independently chosen threshold.
     ("Det@5FA", "det_fa05", "{:.1f}"),
     ("Det@10FA", "det_fa10", "{:.1f}"),
     ("Det@15FA", "det_fa15", "{:.1f}"),
-    ("mAP@50 (synth)", "map50", "{:.3f}"),
-    ("mAP@50:95 (synth)", "map50_95", "{:.3f}"),
+    ("Screen det % (synth thr)", "detect_rate", "{:.1f}"),
+    ("FA % (synth thr)", "fa_rate", "{:.1f}"),
     ("Prec", "precision", "{:.3f}"),
     ("Rec", "recall", "{:.3f}"),
     ("F1", "f1", "{:.3f}"),
-    ("Oracle Det %", "oracle_detect", "{:.1f}"),
-    # Detect % counts a frame where the model fired anywhere. This is the
-    # fraction of those firings that actually landed on an annotated object.
-    ("Hit %", "hit_rate", "{:.1f}"),
-    ("mIoU", "miou", "{:.3f}"),
-    ("Dice", "dice", "{:.3f}"),
-    ("n matched", "n_matched", "{:d}"),
+    ("Oracle det %", "oracle_detect", "{:.1f}"),
+    ("mAP@50 (synth)", "map50", "{:.3f}"),
+    ("mAP@50:95 (synth)", "map50_95", "{:.3f}"),
     ("ms", "latency_ms", "{:.1f}"),
     ("FPS", "fps", "{:.1f}"),
-    ("Params M", "params_m", "{:.2f}"),
+    ("Params M (fused)", "params_m", "{:.2f}"),
     ("GFLOPs", "gflops", "{:.1f}"),
     ("Size MB", "size_mb", "{:.1f}"),
+    ("Epochs run", "epochs_run", "{:d}"),
+    ("Best epoch", "best_epoch", "{:d}"),
     ("Train min", "train_min", "{:.1f}"),
 ]
 
@@ -97,26 +93,37 @@ def detection_at_fa(eval_dir, targets=MATCHED_FA):
     """
     Detection rate at each target false-alarm rate, from the fine sweep.
 
-    The sweep is monotonic in confidence but sampled, so an exact target rate
-    usually falls between two rows. This takes the highest detection rate whose
-    false-alarm rate does not exceed the target, which is the operating point a
-    deployer constrained to that budget would actually get. Where the arm
-    cannot reach the target at any threshold the entry is None rather than a
-    number extrapolated past the measured range.
+    Takes the highest detection rate whose false-alarm rate does not exceed the
+    target. The false-alarm rate used is the test set's own, so this is a way
+    of comparing arms at equal cost, not a threshold a deployer could have set
+    beforehand -- a deployer does not have the test set. Where no threshold in
+    the sweep meets the target the entry is None, never an extrapolation.
     """
     path = eval_dir / "threshold_sweep_fine.csv"
     if not path.exists():
         return {t: None for t in targets}
-
     with open(path, newline="", encoding="utf-8") as f:
         rows = [(float(r["organic_FP_rate"]), float(r["ewaste_detection_rate"]))
                 for r in csv.DictReader(f)]
-
     out = {}
     for t in targets:
         under = [d for fa, d in rows if fa <= t]
         out[t] = max(under) if under else None
     return out
+
+
+def convergence(pool, suffix):
+    """(epochs run, best epoch) from the run's results.csv, or (None, None)."""
+    path = ROOT / "runs" / "detect" / run_name(pool, suffix) / "results.csv"
+    if not path.exists():
+        return None, None
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = [{k.strip(): v for k, v in r.items()} for r in csv.DictReader(f)]
+    if not rows:
+        return None, None
+    key = "metrics/mAP50-95(B)"
+    best = max(rows, key=lambda r: float(r[key]))
+    return int(float(rows[-1]["epoch"])), int(float(best["epoch"]))
 
 
 def load_latency(pool):
@@ -134,6 +141,10 @@ def load_latency(pool):
     return (data or {}).get("arms") or {}
 
 
+def pct(v):
+    return None if v is None else v * 100
+
+
 def collect(pool, label, suffix, latency=None):
     eval_dir = ROOT / eval_dir_name(pool, suffix)
     summary = read_json(eval_dir / "summary.json")
@@ -142,51 +153,36 @@ def collect(pool, label, suffix, latency=None):
 
     synth = summary.get("synthetic") or {}
     cap = summary.get("capacity") or {}
-    loc = summary.get("localisation") or {}
-    # The reported point: chosen on held-out data. Older summaries predate the
-    # split and carry only real_at_synthetic_conf; ones older still have
-    # neither, and fall back to the tuned figure with the oracle column left
-    # equal to it, which makes the substitution visible rather than silent.
     oracle = summary.get("real_best") or {}
-    best = (summary.get("headline")
-            or summary.get("real_at_synthetic_conf")
-            or oracle)
-
-    params = cap.get("n_params")
-    train_s = synth.get("train_seconds")
-    detect = best.get("ewaste_detection_rate")
-    fa = best.get("organic_FP_rate")
+    at_synth = summary.get("headline") or {}
 
     matched = detection_at_fa(eval_dir)
-    hit = loc.get("hit_rate_given_fired")
-
     timed = (latency or {}).get(suffix)
-    latency_ms = timed["latency_ms"] if timed else cap.get("latency_ms")
-    fps = timed["fps"] if timed else cap.get("fps")
+    params = cap.get("n_params")
+    train_s = synth.get("train_seconds")
+    epochs_run, best_epoch = (convergence(pool, suffix) if suffix != "ensemble"
+                              else (None, None))
 
     return {
         "model": label,
-        "detect_rate": None if detect is None else detect * 100,
-        "fa_rate": None if fa is None else fa * 100,
-        "det_fa05": None if matched[0.05] is None else matched[0.05] * 100,
-        "det_fa10": None if matched[0.10] is None else matched[0.10] * 100,
-        "det_fa15": None if matched[0.15] is None else matched[0.15] * 100,
-        "hit_rate": None if hit is None else hit * 100,
-        "n_matched": loc.get("n_matched"),
+        "det_fa05": pct(matched[0.05]),
+        "det_fa10": pct(matched[0.10]),
+        "det_fa15": pct(matched[0.15]),
+        "detect_rate": pct(at_synth.get("ewaste_detection_rate")),
+        "fa_rate": pct(at_synth.get("organic_FP_rate")),
+        "precision": at_synth.get("precision"),
+        "recall": at_synth.get("recall"),
+        "f1": at_synth.get("f1"),
+        "oracle_detect": pct(oracle.get("ewaste_detection_rate")),
         "map50": synth.get("map50"),
         "map50_95": synth.get("map50_95"),
-        "precision": best.get("precision"),
-        "recall": best.get("recall"),
-        "f1": best.get("f1"),
-        "oracle_detect": (oracle.get("ewaste_detection_rate") * 100
-                          if oracle.get("ewaste_detection_rate") is not None else None),
-        "miou": loc.get("mIoU"),
-        "dice": loc.get("dice"),
-        "latency_ms": latency_ms,
-        "fps": fps,
+        "latency_ms": timed["latency_ms"] if timed else cap.get("latency_ms"),
+        "fps": timed["fps"] if timed else cap.get("fps"),
         "params_m": None if params is None else params / 1e6,
         "gflops": cap.get("gflops"),
         "size_mb": cap.get("model_size_mb"),
+        "epochs_run": epochs_run,
+        "best_epoch": best_epoch,
         "train_min": None if train_s is None else train_s / 60,
     }
 
@@ -214,7 +210,7 @@ def main():
 
     if not rows:
         print(f"[!] no summaries found for pool {args.pool}.")
-        print("    run 06_evaluate.py for at least one model first.")
+        print("    run src/06_evaluate.py for at least one model first.")
         return
 
     widths = [max(len(head), max(len(cell(r, k, f)) for r in rows))
@@ -231,19 +227,9 @@ def main():
     if missing:
         print(f"not yet evaluated: {', '.join(missing)}")
 
-    gaps = {h for (h, k, _) in COLUMNS for r in rows if r.get(k) is None}
-    if gaps:
-        print(f"columns with gaps: {', '.join(sorted(gaps))}")
-        if "mIoU" in gaps or "Dice" in gaps:
-            print("  mIoU/Dice need hand-drawn boxes -> python 09_annotate.py")
-        if "GFLOPs" in gaps:
-            print("  GFLOPs are unavailable where thop is not installed")
-
-    print("Rates are at the operating point chosen on held-out data. "
-          "'Oracle Det %' is the")
-    print("detection rate at the threshold that maximises F1 on the test set: "
-          "an upper")
-    print("bound that assumes the answer is already known, not an achievable result.")
+    print("Compare arms on the Det@FA columns. The synthetic-threshold columns "
+          "sit at a")
+    print("different point of each arm's curve and are not comparable across arms.")
 
     OUT.mkdir(parents=True, exist_ok=True)
 

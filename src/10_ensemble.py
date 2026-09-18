@@ -341,8 +341,6 @@ def main():
         "fps": fps,
     }
 
-    truth = ev.load_annotations(ewaste)
-
     rows = [ev.score_at(org_det, ew_det, t, n_org, n_ew) for t in ev.THRESHOLDS]
     lo, hi = min(ev.THRESHOLDS), max(ev.THRESHOLDS)
     steps = int(round((hi - lo) / ev.FINE_STEP)) + 1
@@ -361,7 +359,6 @@ def main():
         print(f"  threshold {synth_conf:.3f} (box F1 {synth_f1:.3f} on synthetic val)")
     else:
         headline, headline_source = best, "TEST SET -- no synthetic split found"
-    localisation, loc_rows = ev.localisation_at(ew_det, truth, headline["confidence"])
 
     for name, data in (("threshold_sweep.csv", rows),
                        ("threshold_sweep_fine.csv", fine_rows)):
@@ -369,15 +366,6 @@ def main():
             writer = csv.DictWriter(f, fieldnames=list(data[0].keys()))
             writer.writeheader()
             writer.writerows(data)
-
-    if loc_rows:
-        with open(out / "localisation_per_image.csv", "w", newline="",
-                  encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["path", "n_gt", "n_detections",
-                                              "n_matched", "ceiling", "best_iou"])
-            w.writeheader()
-            for r in loc_rows:
-                w.writerow(dict(r, path=r["path"].relative_to(ROOT).as_posix()))
 
     with open(out / "per_image.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -451,19 +439,6 @@ def main():
     emit("  of one. That is the price of the accuracy reported above, and is")
     emit("  stated here so the comparison with the single models is honest.")
     emit()
-    emit("-" * 74)
-    emit("LOCALISATION")
-    emit("-" * 74)
-    if localisation is None:
-        emit("  no hand-drawn boxes found under annotations/ewaste_test.")
-        emit("  Run 09_annotate.py to enable mIoU and Dice.")
-    elif localisation["n_matched"] == 0:
-        emit(f"  {localisation['n_gt']} boxes annotated, none matched at "
-             f"conf {best['confidence']:.3f}")
-    else:
-        emit(f"  annotated boxes {localisation['n_gt']}, matched "
-             f"{localisation['n_matched']} at IoU >= {localisation['iou_thr']}")
-        emit(f"  mIoU {localisation['mIoU']:.4f}    Dice {localisation['dice']:.4f}")
     emit("=" * 74)
 
     n_fp = ev.save_worst(org_det, headline["confidence"], out / "false_positives")
@@ -487,7 +462,6 @@ def main():
         "real_best": best,
         "real_best_coarse_grid": best_coarse,
         "capacity": capacity,
-        "localisation": localisation,
         "fine_step": ev.FINE_STEP,
         "sweep": rows,
     }

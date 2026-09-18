@@ -1,5 +1,11 @@
 # Handoff — e-waste contamination detection
 
+> **Scope change, 2026-09-18.** The paper measures image-level screening only.
+> Localisation was removed: `src/09_annotate.py`, `annotations/`, and the mIoU,
+> Dice and hit-rate metrics no longer exist. Everything below that refers to
+> them is historical. Architectures are compared on detection at matched
+> false-alarm rates; see `src/11_metrics_table.py`.
+
 Last updated: 2026-08-30 (multi-architecture round)
 
 Read this first in a new session. It records what exists, what the numbers

@@ -12,8 +12,8 @@ worth having.
 Three sheets:
 
     Results   the table, grouped headers, best value in each column marked
-    Charts    detection against false alarms, F1, and accuracy against speed
-    Notes     what the operating point is and why the oracle column exists
+    Charts    detection at matched false alarms, and against throughput
+    Notes     what is measured, and why only some columns are ranked
 
 Run:    python src/13_excel.py --pool 60
 Output: Manuscripts/tables/results_pool60.xlsx
@@ -48,28 +48,31 @@ def load_table_module():
 # None in the last field means the column is descriptive, not ranked.
 COLUMNS = [
     ("", "Model", "model", None, None),
-    ("At each arm's own threshold", "Detection %", "detect_rate", "0.0", None),
-    ("At each arm's own threshold", "False alarm %", "fa_rate", "0.0", None),
-    ("At each arm's own threshold", "Precision", "precision", "0.000", None),
-    ("At each arm's own threshold", "Recall", "recall", "0.000", None),
-    ("At each arm's own threshold", "F1", "f1", "0.000", True),
-    # The comparable columns. Every arm read at the same false-alarm budget.
+    # The comparable columns: every arm read at the same false-alarm budget.
+    # These are the only accuracy columns ranked.
     ("Detection at matched false alarms", "@5% FA", "det_fa05", "0.0", True),
     ("Detection at matched false alarms", "@10% FA", "det_fa10", "0.0", True),
     ("Detection at matched false alarms", "@15% FA", "det_fa15", "0.0", True),
-    ("Synthetic validation", "mAP@50", "map50", "0.000", True),
-    ("Synthetic validation", "mAP@50:95", "map50_95", "0.000", True),
-    ("Localisation", "Hit % when fired", "hit_rate", "0.0", True),
-    ("Localisation", "mIoU", "miou", "0.000", None),
-    ("Localisation", "Dice", "dice", "0.000", None),
-    ("Localisation", "n matched", "n_matched", "0", None),
+    # Each arm at its own synthetic-chosen threshold. Not ranked: the
+    # thresholds sit at different points of each arm's curve, so a leader here
+    # is an arm whose threshold landed favourably, not a better model. Ranking
+    # the false-alarm column alone rewarded exactly that.
+    ("At each arm's synthetic threshold", "Screening detection %", "detect_rate", "0.0", None),
+    ("At each arm's synthetic threshold", "False alarm %", "fa_rate", "0.0", None),
+    ("At each arm's synthetic threshold", "Precision", "precision", "0.000", None),
+    ("At each arm's synthetic threshold", "Recall", "recall", "0.000", None),
+    ("At each arm's synthetic threshold", "F1", "f1", "0.000", None),
     ("Upper bound", "Oracle detection %", "oracle_detect", "0.0", None),
+    ("Synthetic validation", "mAP@50", "map50", "0.000", None),
+    ("Synthetic validation", "mAP@50:95", "map50_95", "0.000", None),
     ("Cost", "Latency ms", "latency_ms", "0.0", False),
     ("Cost", "FPS", "fps", "0.0", True),
-    ("Cost", "Parameters M", "params_m", "0.00", False),
+    ("Cost", "Parameters M (fused)", "params_m", "0.00", False),
     ("Cost", "GFLOPs", "gflops", "0.0", False),
     ("Cost", "Weights MB", "size_mb", "0.0", False),
-    ("Cost", "Training min", "train_min", "0.0", False),
+    ("Training", "Epochs run", "epochs_run", "0", None),
+    ("Training", "Best epoch", "best_epoch", "0", None),
+    ("Training", "Training min", "train_min", "0.0", None),
 ]
 
 INK = "1F3B33"
@@ -155,8 +158,7 @@ def write_charts(wb, ws_data, rows):
                 return i
         raise KeyError(key)
 
-    # Detection against false alarms: the screening trade-off, side by side so
-    # a model that detects well by firing constantly is visible as such.
+    # Every arm at the same three false-alarm budgets: the comparison itself.
     bar = BarChart()
     bar.type, bar.style, bar.height, bar.width = "col", 10, 9, 22
     bar.title = "Detection at matched false-alarm budgets (comparable)"
@@ -168,109 +170,89 @@ def write_charts(wb, ws_data, rows):
     bar.set_categories(names)
     ws.add_chart(bar, "A1")
 
-    f1 = BarChart()
-    f1.type, f1.style, f1.height, f1.width = "col", 10, 9, 22
-    f1.title = "F1 at the held-out operating point"
-    f1.y_axis.title = "F1"
-    c = col_of("f1")
-    f1.add_data(Reference(ws_data, min_col=c, min_row=2, max_row=n + 2),
-                titles_from_data=True)
-    f1.set_categories(names)
-    ws.add_chart(f1, "A20")
-
     # Accuracy against speed. One point per model; the ensemble sits far left.
     sc = ScatterChart()
     sc.style, sc.height, sc.width = 13, 9, 22
-    sc.title = "F1 against throughput"
+    sc.title = "Detection at 10% false alarms against throughput"
     sc.x_axis.title = "FPS"
-    sc.y_axis.title = "F1"
+    sc.y_axis.title = "detection % @10% FA"
     xs = Reference(ws_data, min_col=col_of("fps"), min_row=3, max_row=n + 2)
-    ys = Reference(ws_data, min_col=col_of("f1"), min_row=2, max_row=n + 2)
+    ys = Reference(ws_data, min_col=col_of("det_fa10"), min_row=2, max_row=n + 2)
     s = Series(ys, xs, title_from_data=True)
     s.marker.symbol = "circle"
     s.graphicalProperties.line.noFill = True
     sc.series.append(s)
-    ws.add_chart(sc, "A39")
+    ws.add_chart(sc, "A20")
 
 
 NOTES = [
     ("How to read this workbook", True),
     ("", False),
-    ("Operating point", True),
-    ("Every rate in the first group is taken at the confidence threshold "
-     "chosen on synthetic validation, never at the threshold that maximises "
-     "F1 on the test set. Tuning a threshold on the data it is then scored "
-     "against is optimistic by construction.", False),
-    ("", False),
-    ("Why the first group is NOT a fair comparison", True),
-    ("Each arm chose its own threshold independently, and those thresholds "
-     "land anywhere from 0.155 to 0.500. So each arm's detection and false "
-     "alarm rates are read off a different point of its own ROC curve. An arm "
-     "whose threshold landed low looks strong on detection and weak on false "
-     "alarms; one whose threshold landed high looks the reverse. Comparing "
-     "architectures on those columns compares threshold placement, not "
-     "architecture.", False),
+    ("What is measured", True),
+    ("Image-level screening. A photograph containing e-waste counts as "
+     "detected when the model raises any detection in it; a photograph of "
+     "organic waste counts as a false alarm when it does. Where the box lands "
+     "is not measured and not claimed.", False),
     ("", False),
     ("Detection at matched false alarms", True),
-    ("These are the comparable columns. Every arm is read at the same false "
-     "alarm budget, taken as the best detection rate its sweep reaches "
-     "without exceeding that budget. Differences here are attributable to the "
-     "model. Lead the architecture comparison with these.", False),
+    ("The columns to compare architectures on. Every arm is read at the same "
+     "false-alarm budget -- the best detection rate its sweep reaches without "
+     "exceeding 5, 10 or 15% false alarms -- so differences are attributable "
+     "to the model. The budget is met using the test set's own false-alarm "
+     "rate, so this is a comparison protocol, not an operating point anyone "
+     "could have set in advance.", False),
     ("", False),
-    ("Hit % when fired", True),
-    ("Detection % counts any frame where the model fired anywhere in the "
-     "image. This column is the fraction of those firings that actually "
-     "landed on an annotated object at IoU >= 0.5. It runs 15-30% across "
-     "arms, so most frames credited as a detection are not localised on the "
-     "e-waste. Detection % is a frame-level alarm rate, not a localisation "
-     "rate.", False),
-    ("", False),
-    ("mIoU, Dice and n matched are not ranked", True),
-    ("mIoU is measured at each arm's own threshold, and a higher threshold "
-     "mechanically raises it by discarding the loosely-aimed low-confidence "
-     "boxes. The arm with the highest mIoU has the fewest matches. Read these "
-     "with n matched beside them; they are not a ranking.", False),
+    ("Why the synthetic-threshold columns are not a comparison", True),
+    ("Each arm's threshold is the argmax of its F1 curve on synthetic "
+     "validation. Those curves are nearly flat -- 0.10 to 0.30 wide within "
+     "0.02 of the peak, even on leak-free real data -- so where the argmax "
+     "lands is close to arbitrary. An arm whose threshold landed low looks "
+     "strong on detection and weak on false alarms, and the reverse. These "
+     "columns are what a deployment without real calibration data would get, "
+     "and are not ranked.", False),
     ("", False),
     ("Oracle detection %", True),
-    ("The detection rate at the test-set-optimal threshold. It is an upper "
-     "bound that assumes the answer is already known, not an achievable "
-     "result. It is reported so the size of that gap stays visible.", False),
+    ("Detection at the threshold that maximises F1 on the test set itself. An "
+     "upper bound that assumes the answer is already known, not a result.",
+     False),
     ("", False),
     ("Precision, recall and F1", True),
     ("These depend on the 400:747 ratio of positives to negatives in the test "
-     "split. That ratio is an artefact of how the split was drawn, not a "
-     "real-world rate of contamination. Detection rate and false alarm rate "
-     "do not share this dependence and should lead any comparison.", False),
+     "split, an artefact of how it was drawn rather than a real rate of "
+     "contamination. Detection and false-alarm rate do not.", False),
     ("", False),
     ("mAP columns", True),
-    ("Measured on synthetic validation composites, not on the real "
-     "photographs. They describe box quality on the training distribution.",
+    ("Measured on synthetic validation composites, not on real photographs. "
+     "They describe box quality on the training distribution and are not "
+     "ranked.", False),
+    ("", False),
+    ("Training", True),
+    ("Every arm trains under one schedule -- batch 16, seed 0, a fixed epoch "
+     "ceiling, early stopping at patience 30 on validation mAP@50:95. Epochs "
+     "run differ by design. An arm whose best epoch equals its last was still "
+     "improving when it stopped, and should be read as possibly undertrained.",
      False),
     ("", False),
-    ("Annotation set", True),
-    ("Localisation is measured against a stratified sample of 100 test "
-     "photographs (45 electrical cables, 38 electronic chips, 17 "
-     "smartphones), hand-drawn, matching annotations/subset.json. An earlier "
-     "pass left 27 extra cable annotations in place, which skewed the sample "
-     "to 56.7% cables against a test set that is 45% cables; those were "
-     "removed and every arm re-evaluated.", False),
-    ("", False),
-    ("Early stopping", True),
-    ("All arms trained up to 120 epochs, batch 16, seed 0, with early "
-     "stopping at patience 30 on validation mAP@50:95. Arms that converged "
-     "sooner were stopped by that criterion, so epoch counts differ by "
-     "design.", False),
+    ("Cost", True),
+    ("Latency is measured for every arm in one interleaved sitting and "
+     "reported as the fastest round, since contention only adds time. The "
+     "ranking is reproducible across sittings; the absolute level moves about "
+     "5% with machine state. FLOPs do not predict latency on this hardware: "
+     "the arm with the fewest GFLOPs is among the slowest, because "
+     "depthwise-separable convolutions are bandwidth-bound. Parameter counts "
+     "are after Conv-BN fusion, about 0.2% below the figures Ultralytics "
+     "quotes.", False),
     ("", False),
     ("Ensemble", True),
-    ("Weighted box fusion over all 11 members. Member weights come from "
-     "held-out synthetic validation F1, never from the test set. Its cost row "
-     "is the sum over members: running 11 detectors costs roughly 11 times "
-     "the inference of one.", False),
+    ("Weighted box fusion over all members, weights from synthetic "
+     "validation F1. Those F1 values are nearly identical across arms, so the "
+     "weights are close to uniform and the ensemble is effectively "
+     "unweighted. Its cost row is the sum over members.", False),
     ("", False),
     ("Highlighting", True),
-    ("A shaded cell is the leading value in that column. Differences of "
-     "around four points are inside the noise floor of this test set; treat "
-     "them as ties.", False),
+    ("A shaded cell leads its column. Only the matched-false-alarm and cost "
+     "columns are ranked. Differences under about four points are inside the "
+     "Wilson intervals of this test set; treat them as ties.", False),
 ]
 
 
