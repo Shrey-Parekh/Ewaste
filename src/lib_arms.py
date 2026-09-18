@@ -35,6 +35,30 @@ ARMS = [
 MEMBERS = [(label, tag) for label, _, tag in ARMS]
 
 
-def run_name(pool, tag):
-    """Directory a run lands in, and the suffix its evaluation directory uses."""
-    return f"pool{pool}" + (f"_{tag}" if tag else "")
+def run_name(pool, tag="", seed=0):
+    """
+    Name of a run's directory under runs/detect/. The single definition: the
+    trainer, evaluator, ensemble, tables and launcher all call this, because
+    it was once hand-copied into seven places and two of them disagreed about
+    what a tagged run at a non-default seed was called.
+
+    Seed 0 adds nothing, so the original runs keep their names.
+    """
+    return (f"pool{pool}" + (f"_{tag}" if tag else "")
+            + (f"_s{seed}" if seed else ""))
+
+
+def eval_dir_name(pool, tag="", seed=0):
+    """Name of the matching evaluation directory beside runs/."""
+    return "eval_" + run_name(pool, tag, seed)
+
+
+if __name__ == "__main__":
+    assert run_name(60) == "pool60"
+    assert run_name(60, "v8s_cbam") == "pool60_v8s_cbam"
+    assert run_name(60, seed=3) == "pool60_s3"
+    # the case the old copies got wrong: a tag no longer swallows the seed
+    assert run_name(60, "v8s_cbam", 3) == "pool60_v8s_cbam_s3"
+    assert eval_dir_name(60, "ensemble") == "eval_pool60_ensemble"
+    assert len({t for _, _, t in ARMS}) == len(ARMS), "duplicate tag"
+    print("lib_arms: ok")

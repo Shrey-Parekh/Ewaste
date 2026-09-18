@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
+from lib_arms import eval_dir_name
+
 # This file lives in src/; the data it reads and writes lives beside src/, not
 # inside it. SRC is used for loading sibling modules by path, ROOT for anything
 # on disk.
@@ -89,7 +91,7 @@ def synthetic_examples(pool, n=6):
 
 
 def false_positives(pool, n=6):
-    src = sorted((ROOT / f"eval_pool{pool}" / "false_positives").glob("FP_*.jpg"))[:n]
+    src = sorted((ROOT / eval_dir_name(pool) / "false_positives").glob("FP_*.jpg"))[:n]
     imgs, caps = [], []
     for i, p in enumerate(src):
         imgs.append(Image.open(p).convert("RGB"))

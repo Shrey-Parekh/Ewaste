@@ -49,7 +49,7 @@ OUT = ROOT / "Manuscripts" / "tables"
 # (label, run/eval suffix). Order is the order the paper presents them in.
 # Every arm from the one shared list, in its presentation order, plus the
 # ensemble, which is not a trainable arm and so is not in that list.
-from lib_arms import MEMBERS  # noqa: E402
+from lib_arms import MEMBERS, eval_dir_name  # noqa: E402
 
 MODELS = MEMBERS + [("Ensemble", "ensemble")]
 
@@ -135,8 +135,7 @@ def load_latency(pool):
 
 
 def collect(pool, label, suffix, latency=None):
-    tail = f"_{suffix}" if suffix else ""
-    eval_dir = ROOT / f"eval_pool{pool}{tail}"
+    eval_dir = ROOT / eval_dir_name(pool, suffix)
     summary = read_json(eval_dir / "summary.json")
     if summary is None:
         return None

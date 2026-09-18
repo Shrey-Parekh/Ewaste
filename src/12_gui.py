@@ -26,7 +26,7 @@ import subprocess
 import sys
 import threading
 
-from lib_arms import ARMS, run_name
+from lib_arms import ARMS, eval_dir_name, run_name
 
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
@@ -42,8 +42,7 @@ def status_of(pool, tag):
     """(trained, evaluated) for one arm, read from what is on disk."""
     name = run_name(pool, tag)
     trained = (ROOT / "runs" / "detect" / name / "weights" / "best.pt").exists()
-    suffix = f"_{tag}" if tag else ""
-    evaluated = (ROOT / f"eval_pool{pool}{suffix}" / "summary.json").exists()
+    evaluated = (ROOT / eval_dir_name(pool, tag) / "summary.json").exists()
     return trained, evaluated
 
 

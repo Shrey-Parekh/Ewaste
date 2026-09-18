@@ -32,6 +32,7 @@ from PIL import Image, ImageDraw
 import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
 from lib_metrics import (count_gflops, count_parameters, localisation_summary,
                          match_ious, measure_latency, weight_size_mb)
+from lib_arms import eval_dir_name, run_name
 from pipeline_common import load_image
 
 # ------------------------- CONFIG -------------------------
@@ -260,14 +261,13 @@ def main():
                          "original run and keeps the original directory names")
     args = ap.parse_args()
 
-    suffix = f"_{args.tag}" if args.tag else ("" if args.seed == 0 else f"_s{args.seed}")
-    run_dir = ROOT / "runs" / "detect" / f"pool{args.pool}{suffix}"
+    run_dir = ROOT / "runs" / "detect" / run_name(args.pool, args.tag, args.seed)
     weights = run_dir / "weights" / "best.pt"
     if not weights.exists():
         print(f"[!] weights not found: {weights}")
         return
 
-    out = ROOT / f"eval_pool{args.pool}{suffix}"
+    out = ROOT / eval_dir_name(args.pool, args.tag, args.seed)
     out.mkdir(parents=True, exist_ok=True)
 
     synth = {}

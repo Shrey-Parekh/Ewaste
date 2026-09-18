@@ -45,7 +45,7 @@ ROOT = SRC.parent
 
 # (label, run-directory suffix), from the one list every script shares. The
 # empty suffix is the plain YOLOv8s run.
-from lib_arms import MEMBERS  # noqa: E402
+from lib_arms import MEMBERS, eval_dir_name, run_name  # noqa: E402
 
 IOU_THR = 0.55          # cluster membership, the WBF paper's default
 LATENCY_WARMUP = 10
@@ -150,16 +150,15 @@ def member_weights(members, pool, power):
     """
     f1s = []
     for _, tag in members:
-        suffix = f"_{tag}" if tag else ""
-        p = ROOT / "runs" / "detect" / f"pool{pool}{suffix}" / "synthetic_summary.json"
+        p = ROOT / "runs" / "detect" / run_name(pool, tag) / "synthetic_summary.json"
         if not p.exists():
-            return None, f"{p.parent.parent.name} has no synthetic_summary.json"
+            return None, f"{p.parent.name} has no synthetic_summary.json"
         f1 = json.loads(p.read_text(encoding="utf-8")).get("best_f1")
         # `is None`, not falsiness: a run that collapsed to F1 0.0 validated
         # and should be weighted at zero, which is a different thing from a
         # summary that never recorded the number at all.
         if f1 is None:
-            return None, f"{p.parent.parent.name} recorded no validation F1"
+            return None, f"{p.parent.name} recorded no validation F1"
         f1s.append(float(f1))
 
     mean = sum(f1s) / len(f1s)
@@ -273,8 +272,7 @@ def main():
 
     members = []
     for label, tag in MEMBERS:
-        suffix = f"_{tag}" if tag else ""
-        w = ROOT / "runs" / "detect" / f"pool{args.pool}{suffix}" / "weights" / "best.pt"
+        w = ROOT / "runs" / "detect" / run_name(args.pool, tag) / "weights" / "best.pt"
         if not w.exists():
             print(f"[!] missing member: {label} -> {w}")
             print("    train every member before building the ensemble.")
@@ -297,7 +295,7 @@ def main():
     spread = max(weights) / min(weights) if min(weights) > 0 else float("inf")
     print(f"  strongest member counts {spread:.2f}x the weakest")
 
-    out = ROOT / f"eval_pool{args.pool}_ensemble"
+    out = ROOT / eval_dir_name(args.pool, "ensemble")
     out.mkdir(parents=True, exist_ok=True)
 
     organic = ev.read_manifest("organic_test")
