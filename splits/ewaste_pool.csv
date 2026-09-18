@@ -1,11 +1,10 @@
 role,category,path
-ewaste_pool,e-waste,raw/ewaste/e-waste 1222.jpg
-ewaste_pool,e-waste,raw/ewaste/e-waste 2825.jpg
-ewaste_pool,e-waste,raw/ewaste/e-waste 2843.jpg
-ewaste_pool,e-waste,raw/ewaste/e-waste 2966.jpg
-ewaste_pool,e-waste,raw/ewaste/e-waste 3006.jpg
-ewaste_pool,e-waste,raw/ewaste/e-waste 783.jpg
-ewaste_pool,e-waste,raw/ewaste/e-waste 913.jpg
+ewaste_pool,electronic chip,raw/ewaste/e-waste 1222.jpg
+ewaste_pool,smartphones,raw/ewaste/e-waste 2825.jpg
+ewaste_pool,smartphones,raw/ewaste/e-waste 2843.jpg
+ewaste_pool,smartphones,raw/ewaste/e-waste 3006.jpg
+ewaste_pool,electronic chip,raw/ewaste/e-waste 783.jpg
+ewaste_pool,electronic chip,raw/ewaste/e-waste 913.jpg
 ewaste_pool,electrical cables,raw/ewaste/electrical_cables 108.jpg
 ewaste_pool,electrical cables,raw/ewaste/electrical_cables 18.jpg
 ewaste_pool,electrical cables,raw/ewaste/electrical_cables 232.jpg
@@ -18,7 +17,6 @@ ewaste_pool,electrical cables,raw/ewaste/electrical_cables 76.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 110.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 133.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 135.jpg
-ewaste_pool,electronic chip,raw/ewaste/electronic_chip 18.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 196.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 24.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 259.jpg
@@ -43,15 +41,15 @@ ewaste_pool,electronic chip,raw/ewaste/electronic_chip 580.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 594.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 597.jpg
 ewaste_pool,electronic chip,raw/ewaste/electronic_chip 612.jpg
-ewaste_pool,images (1),raw/ewaste/images (1).jpg
-ewaste_pool,images (2),raw/ewaste/images (2).jpg
-ewaste_pool,images (3),raw/ewaste/images (3).jpg
-ewaste_pool,images (4),raw/ewaste/images (4).jpg
-ewaste_pool,images (5),raw/ewaste/images (5).jpg
-ewaste_pool,images,raw/ewaste/images.jpg
-ewaste_pool,istockphoto-2246139796-612x612,raw/ewaste/istockphoto-2246139796-612x612.jpg
-ewaste_pool,laptops,raw/ewaste/laptops 198.jpg
-ewaste_pool,Miscellaneous Trash,raw/ewaste/Miscellaneous Trash_315.jpg
+ewaste_pool,batteries,raw/ewaste/images (1).jpg
+ewaste_pool,smartphones,raw/ewaste/images (2).jpg
+ewaste_pool,electronic chip,raw/ewaste/images (3).jpg
+ewaste_pool,electronic chip,raw/ewaste/images (4).jpg
+ewaste_pool,electrical cables,raw/ewaste/images (5).jpg
+ewaste_pool,batteries,raw/ewaste/images.jpg
+ewaste_pool,batteries,raw/ewaste/istockphoto-2246139796-612x612.jpg
+ewaste_pool,electronic chip,raw/ewaste/laptops 198.jpg
+ewaste_pool,electrical cables,raw/ewaste/Miscellaneous Trash_315.jpg
 ewaste_pool,smartphones,raw/ewaste/smartphones 110.jpg
 ewaste_pool,smartphones,raw/ewaste/smartphones 129.jpg
 ewaste_pool,smartphones,raw/ewaste/smartphones 141.jpg

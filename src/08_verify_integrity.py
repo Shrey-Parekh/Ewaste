@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import csv
+import hashlib
 import sys
 
 # This file lives in src/; the data it reads and writes lives beside src/, not
@@ -31,6 +32,47 @@ def load_role(name: str):
         return None
     with open(path, encoding="utf-8") as f:
         return {norm(r["path"]) for r in csv.DictReader(f)}
+
+
+def role_hashes(name: str):
+    """{content hash: path} for one role, or None if the manifest is missing."""
+    path = SPLITS / (name + ".csv")
+    if not path.exists():
+        return None
+    out = {}
+    with open(path, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            out.setdefault(hashlib.md5((ROOT / r["path"]).read_bytes()).hexdigest(),
+                           []).append(r["path"])
+    return out
+
+
+def check_content(failures):
+    """
+    The same photograph under two paths. Checks 1 and 2 compare paths, and
+    passed while a training photograph was a renamed, byte-identical copy of a
+    test photograph. This compares the bytes.
+    """
+    print()
+    print("5. no photograph shared by content, across or within roles")
+    hashes = {name: role_hashes(name) for name in ALL_ROLES}
+    for name, h in hashes.items():
+        dup = [v for v in h.values() if len(v) > 1]
+        if dup:
+            failures.append("{} holds {} photographs twice under different "
+                            "names".format(name, len(dup)))
+        print("   {}  {:<16} duplicates within: {}".format(
+            "ok " if not dup else "FAIL", name, len(dup)))
+    for i, a in enumerate(ALL_ROLES):
+        for b in ALL_ROLES[i + 1:]:
+            both = set(hashes[a]) & set(hashes[b])
+            if both:
+                failures.append("{} and {} share {} photographs by content".format(
+                    a, b, len(both)))
+                for h in sorted(both)[:3]:
+                    print("        {} == {}".format(hashes[a][h][0], hashes[b][h][0]))
+            print("   {}  {:<16} vs {:<16} {:>4}".format(
+                "ok " if not both else "FAIL", a, b, len(both)))
 
 
 def main():
@@ -112,6 +154,8 @@ def main():
                             "lists {}".format(n_disk, n_manifest))
         print("   {}  on disk {}, manifest {}".format(
             "ok " if n_disk == n_manifest else "FAIL", n_disk, n_manifest))
+
+    check_content(failures)
 
     print()
     print("=" * 66)

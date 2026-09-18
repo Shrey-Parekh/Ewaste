@@ -58,6 +58,7 @@ Output: splits/*.csv, splits/summary.json
 
 from pathlib import Path
 import csv
+import hashlib
 import json
 import random
 
@@ -98,6 +99,31 @@ N_ORGANIC_CLUTTER = 50
 # organic_test takes everything that is left
 
 SEED = 0
+
+# Categories for curated photographs whose filenames carry none. The label
+# comes from the filename prefix elsewhere, and these sixteen were saved as
+# "e-waste NNN", "images (N)" and similar, or under a misleading name:
+# "laptops 198" is an Intel desktop CPU. Assigned by looking at each image.
+# Batteries have no counterpart category in the test set; they stay in the
+# pool as genuine e-waste but are reported as their own stratum.
+CATEGORY_OVERRIDES = {
+    "e-waste 1222.jpg": "electronic chip",      # optical drive pickup assembly
+    "e-waste 2825.jpg": "smartphones",
+    "e-waste 2843.jpg": "smartphones",
+    "e-waste 2966.jpg": "smartphones",
+    "e-waste 3006.jpg": "smartphones",
+    "e-waste 783.jpg": "electronic chip",       # circuit board
+    "e-waste 913.jpg": "electronic chip",       # speed-controller board
+    "images (1).jpg": "batteries",
+    "images (2).jpg": "smartphones",
+    "images (3).jpg": "electronic chip",        # motherboard
+    "images (4).jpg": "electronic chip",        # circuit board
+    "images (5).jpg": "electrical cables",
+    "images.jpg": "batteries",
+    "istockphoto-2246139796-612x612.jpg": "batteries",
+    "laptops 198.jpg": "electronic chip",       # desktop CPU, not a laptop
+    "Miscellaneous Trash_315.jpg": "electrical cables",
+}
 # ----------------------------------------------------------
 
 VALID_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -138,6 +164,11 @@ def stratified_take(by_category: dict, n: int, rng: random.Random):
     return taken
 
 
+def content_hash(path: Path) -> str:
+    """Identity of a photograph by its bytes, not its name."""
+    return hashlib.md5(path.read_bytes()).hexdigest()
+
+
 def write_manifest(name: str, rows):
     path = OUT / f"{name}.csv"
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -155,9 +186,11 @@ def curated_category(path: Path) -> str:
 
     The curated directory is flat -- the category structure TrashBox provides
     through directory names is lost when files are copied out of it -- so the
-    label is recovered from the filename prefix and is reported for coverage
-    only. Nothing downstream stratifies on it.
+    label is recovered from the filename prefix, except where the filename
+    carries none and CATEGORY_OVERRIDES gives one assigned by eye.
     """
+    if path.name in CATEGORY_OVERRIDES:
+        return CATEGORY_OVERRIDES[path.name]
     stem = path.stem
     for sep in (" ", "_"):
         if sep in stem:
@@ -211,10 +244,32 @@ def main():
     # ---- partition (order matters: each draw consumes from the pool) ----
     print("\nManifests")
     counts = {}
+    ewaste_test = stratified_take(ewaste, N_EWASTE_TEST, rng)
+
+    # The name-based exclusion above misses a photograph that was copied out of
+    # TrashBox and renamed; one curated photograph is byte-identical to a test
+    # photograph under a different name. Compare content. A clash is resolved
+    # by dropping the curated copy, not the test one: removing a test candidate
+    # would change the seeded draw and so every evaluation split, whereas the
+    # pool is never drawn with the RNG and can lose a member without disturbing
+    # anything else. The curated directory also holds one photograph twice
+    # under two names; only the first is kept.
+    test_hashes = {content_hash(p) for _, p in ewaste_test}
+    seen, pool = set(), []
+    for p in curated:
+        h = content_hash(p)
+        if h in test_hashes:
+            print(f"  dropped from pool, same image as a test photograph: {p.name}")
+            continue
+        if h in seen:
+            print(f"  dropped from pool, duplicate of another curated photograph: {p.name}")
+            continue
+        seen.add(h)
+        pool.append(p)
+
     counts["ewaste_pool"] = write_manifest(
-        "ewaste_pool", [(curated_category(p), p) for p in curated])
-    counts["ewaste_test"] = write_manifest(
-        "ewaste_test", stratified_take(ewaste, N_EWASTE_TEST, rng))
+        "ewaste_pool", [(curated_category(p), p) for p in pool])
+    counts["ewaste_test"] = write_manifest("ewaste_test", ewaste_test)
 
     counts["organic_bg"] = write_manifest(
         "organic_bg", stratified_take(organic, N_ORGANIC_BG, rng))
@@ -224,10 +279,12 @@ def main():
     counts["organic_test"] = write_manifest("organic_test", remaining)
 
     # ---- verify disjointness rather than assume it ----
+    # By content, not path: two paths can hold the same photograph, and a
+    # path-only check passed while one did.
     sets = {}
     for name in counts:
         with open(OUT / f"{name}.csv", encoding="utf-8") as f:
-            sets[name] = {r["path"] for r in csv.DictReader(f)}
+            sets[name] = {content_hash(ROOT / r["path"]) for r in csv.DictReader(f)}
 
     print("\nDisjointness check")
     names = sorted(sets)
@@ -252,6 +309,7 @@ def main():
         "organic_categories": ORGANIC_CATEGORIES,
         "organic_curated": False,
         "pairwise_disjoint": clashes == 0,
+        "disjointness_checked_by": "content hash",
     }
     (OUT / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"\nSTEP 0 complete -> {OUT}")
