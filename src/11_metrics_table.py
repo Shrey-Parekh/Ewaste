@@ -31,8 +31,8 @@ The columns are ordered by how much weight they can bear.
   The oracle column is detection at the test-set-optimal F1 threshold: an
   upper bound that assumes the answer is known, not a result.
 
-Precision and F1 depend on the 400:747 ratio of positives to negatives in the
-test split, an artefact of how it was drawn rather than a real prevalence.
+Precision and F1 depend on the ratio of positives to negatives in the test
+split, an artefact of how it was drawn rather than a real prevalence.
 
 Run:    python src/11_metrics_table.py --pool 54
 Output: printed table, plus Manuscripts/tables/metrics_table.{csv,tex}
@@ -56,8 +56,9 @@ OUT = ROOT / "Manuscripts" / "tables"
 # list, then the ensemble, which is not a trainable arm.
 MODELS = MEMBERS + [("Ensemble", "ensemble")]
 
-# False-alarm budgets the arms are compared at.
+# False-alarm budgets the arms are compared at, and their table columns.
 MATCHED_FA = (0.05, 0.10, 0.15)
+FA_KEY = {0.05: "det_fa05", 0.10: "det_fa10", 0.15: "det_fa15"}
 
 COLUMNS = [
     ("Model", "model", "{}"),
@@ -230,7 +231,8 @@ def collect(pool, label, suffix, latency=None):
         "epochs_run": epochs_run,
         "best_epoch": best_epoch,
         "train_min": None if train_s is None else train_s / 60,
-        "censored": censored,
+        # the columns whose value is a lower bound, rendered with a >= sign
+        "censored": [FA_KEY[t] for t in censored],
     }
 
 
@@ -238,7 +240,8 @@ def cell(row, key, fmt):
     v = row.get(key)
     if v is None:
         return "-"
-    return v if isinstance(v, str) else fmt.format(v)
+    text = v if isinstance(v, str) else fmt.format(v)
+    return ">=" + text if key in row.get("censored", ()) else text
 
 
 def main():
@@ -274,11 +277,9 @@ def main():
     if missing:
         print(f"not yet evaluated: {', '.join(missing)}")
 
-    for r in rows:
-        if r["censored"]:
-            budgets = ", ".join(f"{t:.0%}" for t in r["censored"])
-            print(f"[!] {r['model']}: detection at {budgets} FA is a lower bound -- "
-                  "its false-alarm rate stays within budget even at the inference floor")
+    if any(r["censored"] for r in rows):
+        print("'>=' marks a lower bound: that arm stays within the false-alarm "
+              "budget even at the inference floor, so a lower floor might find more.")
     print("Compare arms on the Det@FA columns. The synthetic-threshold columns "
           "sit at a")
     print("different point of each arm's curve and are not comparable across arms.")

@@ -133,16 +133,16 @@ to prevent.
 python src/01_build_splits.py
 python src/02_make_cutouts.py
 python src/03_screen_cutouts.py
-python src/04_build_dataset.py --pool 60
+python src/04_build_dataset.py --pool 54
 
-python src/05_train.py --pool 60 --model yolov8s.pt
-python src/06_evaluate.py --pool 60
+python src/05_train.py --pool 54 --model yolov8s.pt
+python src/06_evaluate.py --pool 54
 
-python src/05_train.py --pool 60 --model yolo11s.pt --tag yolo11s
-python src/06_evaluate.py --pool 60 --tag yolo11s
+python src/05_train.py --pool 54 --model yolo11s.pt --tag yolo11s
+python src/06_evaluate.py --pool 54 --tag yolo11s
 ```
 
-`--pool 60` selects `dataset_pool60/`; it is **not** a free parameter, it must
+`--pool 54` selects `dataset_pool54/`; it is **not** a free parameter, it must
 match a dataset that exists on disk.
 
 
@@ -401,21 +401,21 @@ directories by them, so they must match exactly as written.
 ### Baselines (unchanged architectures)
 
 ```bash
-python src/05_train.py    --pool 60 --model yolov8s.pt
-python src/06_evaluate.py --pool 60
+python src/05_train.py    --pool 54 --model yolov8s.pt
+python src/06_evaluate.py --pool 54
 
-python src/05_train.py    --pool 60 --model yolo11s.pt --tag yolo11s
-python src/06_evaluate.py --pool 60 --tag yolo11s
+python src/05_train.py    --pool 54 --model yolo11s.pt --tag yolo11s
+python src/06_evaluate.py --pool 54 --tag yolo11s
 ```
 
 ### Attention variants
 
 ```bash
-python src/05_train.py    --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_cbam
-python src/06_evaluate.py --pool 60 --tag v8s_cbam
+python src/05_train.py    --pool 54 --model models/yolov8s-cbam.yaml --tag v8s_cbam
+python src/06_evaluate.py --pool 54 --tag v8s_cbam
 
-python src/05_train.py    --pool 60 --model models/yolo11s-cbam.yaml --tag v11s_cbam
-python src/06_evaluate.py --pool 60 --tag v11s_cbam
+python src/05_train.py    --pool 54 --model models/yolo11s-cbam.yaml --tag v11s_cbam
+python src/06_evaluate.py --pool 54 --tag v11s_cbam
 ```
 
 ### Backbones and necks
@@ -425,26 +425,26 @@ equal except the fusion topology, so the six runs answer the FPN-against-BiFPN
 question three times over.
 
 ```bash
-python src/05_train.py    --pool 60 --model models/resnet18-fpn-cbam.yaml --tag r18_fpn_cbam
-python src/06_evaluate.py --pool 60 --tag r18_fpn_cbam
+python src/05_train.py    --pool 54 --model models/resnet18-fpn-cbam.yaml --tag r18_fpn_cbam
+python src/06_evaluate.py --pool 54 --tag r18_fpn_cbam
 
-python src/05_train.py    --pool 60 --model models/resnet18-bifpn-cbam.yaml --tag r18_bifpn_cbam
-python src/06_evaluate.py --pool 60 --tag r18_bifpn_cbam
+python src/05_train.py    --pool 54 --model models/resnet18-bifpn-cbam.yaml --tag r18_bifpn_cbam
+python src/06_evaluate.py --pool 54 --tag r18_bifpn_cbam
 
-python src/05_train.py    --pool 60 --model models/googlenet-fpn-cbam.yaml --tag gnet_fpn_cbam
-python src/06_evaluate.py --pool 60 --tag gnet_fpn_cbam
+python src/05_train.py    --pool 54 --model models/googlenet-fpn-cbam.yaml --tag gnet_fpn_cbam
+python src/06_evaluate.py --pool 54 --tag gnet_fpn_cbam
 
-python src/05_train.py    --pool 60 --model models/googlenet-bifpn-cbam.yaml --tag gnet_bifpn_cbam
-python src/06_evaluate.py --pool 60 --tag gnet_bifpn_cbam
+python src/05_train.py    --pool 54 --model models/googlenet-bifpn-cbam.yaml --tag gnet_bifpn_cbam
+python src/06_evaluate.py --pool 54 --tag gnet_bifpn_cbam
 
-python src/05_train.py    --pool 60 --model models/efficientnet-fpn-cbam.yaml --tag effnet_fpn_cbam
-python src/06_evaluate.py --pool 60 --tag effnet_fpn_cbam
+python src/05_train.py    --pool 54 --model models/efficientnet-fpn-cbam.yaml --tag effnet_fpn_cbam
+python src/06_evaluate.py --pool 54 --tag effnet_fpn_cbam
 
-python src/05_train.py    --pool 60 --model models/efficientnet-bifpn-cbam.yaml --tag effnet_bifpn_cbam
-python src/06_evaluate.py --pool 60 --tag effnet_bifpn_cbam
+python src/05_train.py    --pool 54 --model models/efficientnet-bifpn-cbam.yaml --tag effnet_bifpn_cbam
+python src/06_evaluate.py --pool 54 --tag effnet_bifpn_cbam
 
-python src/05_train.py    --pool 60 --model models/yolo11s-bifpn-cbam.yaml --tag v11s_bifpn_cbam
-python src/06_evaluate.py --pool 60 --tag v11s_bifpn_cbam
+python src/05_train.py    --pool 54 --model models/yolo11s-bifpn-cbam.yaml --tag v11s_bifpn_cbam
+python src/06_evaluate.py --pool 54 --tag v11s_bifpn_cbam
 ```
 
 ### Ensemble and the metrics table

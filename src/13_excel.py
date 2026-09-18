@@ -121,7 +121,10 @@ def write_results(ws, rows):
             c = ws.cell(row=r, column=i, value="-" if v is None else v)
             c.border = Border(bottom=THIN)
             if fmt and v is not None:
-                c.number_format = fmt
+                # a lower bound keeps its number, so it still sorts and ranks,
+                # but displays with a >= sign
+                c.number_format = ('"\u2265"' + fmt if key in row.get("censored", ())
+                                   else fmt)
             if i == 1:
                 c.font = Font(bold=True, size=10)
             else:
@@ -220,7 +223,7 @@ NOTES = [
      False),
     ("", False),
     ("Precision, recall and F1", True),
-    ("These depend on the 400:747 ratio of positives to negatives in the test "
+    ("These depend on the ratio of positives to negatives in the test "
      "split, an artefact of how it was drawn rather than a real rate of "
      "contamination. Detection and false-alarm rate do not.", False),
     ("", False),

@@ -362,7 +362,7 @@ Every change here alters the networks or their optimisation. Any earlier result
 describes different models.
 
 ```bash
-python src/05_train.py --pool 60 --model models/resnet18-bifpn-cbam.yaml --tag r18_bifpn_cbam
+python src/05_train.py --pool 54 --model models/resnet18-bifpn-cbam.yaml --tag r18_bifpn_cbam
 ```
 
 Budget is 160 epochs per arm (10 warm-up + 150), the same for every arm, with

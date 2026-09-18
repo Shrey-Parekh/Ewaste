@@ -82,7 +82,7 @@ def check_near_duplicates(failures):
     The same photograph saved twice with different bytes. Check 5 compares
     bytes and passed while three training photographs were re-encoded copies
     of test photographs. This compares perceptual hashes, pairwise within the
-    e-waste pool and between every training role and every evaluation role.
+    every role and between every pair of roles.
     """
     print()
     print("6. no photograph shared as a re-saved copy (perceptual hash)")
@@ -92,24 +92,27 @@ def check_near_duplicates(failures):
             ph[name] = [(r["path"], perceptual_hash(ROOT / r["path"]))
                         for r in csv.DictReader(f)]
 
-    pool = ph["ewaste_pool"]
-    twins = [(a, b) for i, (a, ha) in enumerate(pool)
-             for b, hb in pool[i + 1:] if same_image(ha, hb)]
-    if twins:
-        failures.append("ewaste_pool holds {} pictures twice".format(len(twins)))
-    print("   {}  ewaste_pool       near-duplicates within: {}".format(
-        "ok " if not twins else "FAIL", len(twins)))
-    for a, b in twins[:3]:
-        print("        {} ~ {}".format(a, b))
+    # Within every role too: a background held twice would let synthetic
+    # validation see a training background under another name.
+    for name in ALL_ROLES:
+        items = ph[name]
+        twins = [(a, b) for i, (a, ha) in enumerate(items)
+                 for b, hb in items[i + 1:] if same_image(ha, hb)]
+        if twins:
+            failures.append("{} holds {} pictures twice".format(name, len(twins)))
+        print("   {}  {:<16} near-duplicates within: {}".format(
+            "ok " if not twins else "FAIL", name, len(twins)))
+        for a, b in twins[:3]:
+            print("        {} ~ {}".format(a, b))
 
-    for tr in TRAIN_ROLES:
-        for te in TEST_ROLES:
-            hits = [(a, b) for a, ha in ph[tr] for b, hb in ph[te] if same_image(ha, hb)]
+    for i, ra in enumerate(ALL_ROLES):
+        for rb in ALL_ROLES[i + 1:]:
+            hits = [(a, b) for a, ha in ph[ra] for b, hb in ph[rb] if same_image(ha, hb)]
             if hits:
                 failures.append("{} and {} share {} pictures as re-saved "
-                                "copies".format(tr, te, len(hits)))
+                                "copies".format(ra, rb, len(hits)))
             print("   {}  {:<16} vs {:<16} {:>4}".format(
-                "ok " if not hits else "FAIL", tr, te, len(hits)))
+                "ok " if not hits else "FAIL", ra, rb, len(hits)))
             for a, b in hits[:3]:
                 print("        {} ~ {}".format(a, b))
 
