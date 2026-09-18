@@ -16,7 +16,7 @@ Three sheets:
     Notes     what is measured, and why only some columns are ranked
 
 Run:    python src/13_excel.py --pool 54
-Output: Manuscripts/tables/results_pool60.xlsx
+Output: Manuscripts/tables/results_pool<N>.xlsx
 """
 
 from pathlib import Path
@@ -230,11 +230,12 @@ NOTES = [
      "ranked.", False),
     ("", False),
     ("Training", True),
-    ("Every arm trains under one schedule -- batch 16, seed 0, a fixed epoch "
-     "ceiling, early stopping at patience 30 on validation mAP@50:95. Epochs "
-     "run differ by design. An arm whose best epoch equals its last was still "
-     "improving when it stopped, and should be read as possibly undertrained.",
-     False),
+    ("Every arm trains on one fixed schedule -- the same number of epochs, "
+     "batch 16, seed 0, no early stopping -- and keeps the checkpoint that "
+     "scored best on held-out synthetic validation. The learning rate decays "
+     "linearly to the last epoch and mosaic augmentation switches off for the "
+     "final 15, so a best epoch near the end is the schedule working as "
+     "designed, not a sign the run was cut short.", False),
     ("", False),
     ("Cost", True),
     ("Latency is measured for every arm in one interleaved sitting and "
@@ -277,9 +278,12 @@ def main():
     args = ap.parse_args()
 
     mt = load_table_module()
+    # The same interleaved latency the printed table and LaTeX use, so the
+    # workbook cannot show different cost figures from the paper.
+    latency = mt.load_latency(args.pool)
     rows, missing = [], []
     for label, suffix in mt.MODELS:
-        row = mt.collect(args.pool, label, suffix)
+        row = mt.collect(args.pool, label, suffix, latency)
         if row:
             rows.append(row)
         else:

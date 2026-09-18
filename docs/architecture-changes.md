@@ -120,7 +120,7 @@ flowchart LR
         F["FROZEN<br/>pretrained backbone / neck"]
         T["TRAINING<br/>new layers + detection head"]
     end
-    subgraph P2["Phase 2 - full run, up to 250 epochs"]
+    subgraph P2["Phase 2 - full run, 150 epochs"]
         direction TB
         A["TRAINING<br/>everything, unfrozen"]
     end
@@ -147,8 +147,8 @@ tensors came back bit-identical while the **97** new ones trained.
 
 ### Two deliberate choices
 
-**Warm-up epochs are additional, not deducted.** 10 warm-up + up to 250 full,
-not 10 fewer. Deducting them would confound any gain from warming up with the loss
+**Warm-up epochs are additional, not deducted.** 10 warm-up + 150 full, not
+10 fewer. Deducting them would confound any gain from warming up with the loss
 from ten fewer full epochs. Every arm gets the same extra budget.
 
 **Continuation uses `last.pt`, not `best.pt`.** Warm-up is initialisation, not
@@ -365,6 +365,8 @@ describes different models.
 python src/05_train.py --pool 60 --model models/resnet18-bifpn-cbam.yaml --tag r18_bifpn_cbam
 ```
 
-Budget is up to 260 epochs per arm (10 warm-up + 250); early stopping at
-patience 30 ends most runs well before that. The full command list
+Budget is 160 epochs per arm (10 warm-up + 150), the same for every arm, with
+no early stopping: the learning-rate decay and the mosaic cut-off are tied to
+the epoch count, so stopping arms at different points would give them
+different schedules. The full command list
 is in `docs/HANDOFF.md`.
