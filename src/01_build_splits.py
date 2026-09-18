@@ -171,6 +171,26 @@ def content_hash(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
 
 
+def drop_repeats(rows, label):
+    """
+    Keep the first of any photographs that are the same picture.
+
+    TrashBox holds some photographs more than once, re-saved under different
+    names, and RealWaste two consecutive near-identical shots. In a test set
+    each copy was scored as a separate photograph, so one picture could count
+    twice. Filtering happens after the seeded draw, so no other split moves.
+    """
+    kept, hashes = [], []
+    for category, p in rows:
+        h = perceptual_hash(p)
+        if any(same_image(h, k) for k in hashes):
+            print(f"  dropped from {label}, same picture as an earlier one: {p.name}")
+            continue
+        hashes.append(h)
+        kept.append((category, p))
+    return kept
+
+
 def write_manifest(name: str, rows):
     path = OUT / f"{name}.csv"
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -246,7 +266,8 @@ def main():
     # ---- partition (order matters: each draw consumes from the pool) ----
     print("\nManifests")
     counts = {}
-    ewaste_test = stratified_take(ewaste, N_EWASTE_TEST, rng)
+    ewaste_test = drop_repeats(stratified_take(ewaste, N_EWASTE_TEST, rng),
+                               "ewaste_test")
 
     # The name-based exclusion above misses a photograph copied out of
     # TrashBox and renamed, and a byte comparison misses one that was also
@@ -286,7 +307,8 @@ def main():
     counts["organic_clutter"] = write_manifest(
         "organic_clutter", stratified_take(organic, N_ORGANIC_CLUTTER, rng))
     remaining = [(c, p) for c in sorted(organic) for p in organic[c]]
-    counts["organic_test"] = write_manifest("organic_test", remaining)
+    counts["organic_test"] = write_manifest(
+        "organic_test", drop_repeats(remaining, "organic_test"))
 
     # ---- verify disjointness rather than assume it ----
     # By content, not path: two paths can hold the same photograph, and a

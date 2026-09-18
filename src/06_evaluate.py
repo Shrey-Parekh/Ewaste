@@ -347,7 +347,7 @@ def main():
     emit("  smaller than these intervals is not resolvable from one run each.")
     emit()
     emit("  Report DETECTION RATE and FALSE ALARM RATE as the primary numbers.")
-    emit("  Precision and F1 additionally depend on the 400:747 positive-to-")
+    emit(f"  Precision and F1 additionally depend on the {n_ew}:{n_org} positive-to-")
     emit("  negative ratio of this test set, which is an artefact of how the")
     emit("  split was drawn rather than a real-world prevalence.")
     emit()

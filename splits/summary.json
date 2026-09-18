@@ -2,10 +2,10 @@
   "seed": 0,
   "counts": {
     "ewaste_pool": 61,
-    "ewaste_test": 400,
+    "ewaste_test": 387,
     "organic_bg": 50,
     "organic_clutter": 50,
-    "organic_test": 747
+    "organic_test": 746
   },
   "ewaste_pool_source": "raw/ewaste",
   "ewaste_pool_curated": true,
