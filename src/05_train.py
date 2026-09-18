@@ -30,6 +30,7 @@ from ultralytics import YOLO
 
 import lib_modules  # noqa: F401  binds CBAM and BiFPNFuse for the YAML parser
 from lib_metrics import count_gflops, count_parameters, weight_size_mb
+from lib_arms import run_name
 from pipeline_common import best_f1_point, write_f1_curve
 
 # This file lives in src/; the data it reads and writes lives beside src/, not
@@ -45,7 +46,14 @@ ROOT = SRC.parent
 # to a nominal batch of 64, so 16 and 32 perform identical optimisation and
 # only the memory ceiling differs.
 TRAIN_CFG = dict(
-    epochs=120,
+    # A ceiling, not a schedule: patience below is what is meant to end a run.
+    # At 120, only 2 of 11 arms ever reached the patience criterion; three
+    # were still improving at the cap (best epoch 119 or 120, one gaining
+    # +0.021 mAP50-95 over its last ten epochs), so the budget, not
+    # convergence, decided where they stopped. That made "weak architecture"
+    # and "stopped early" indistinguishable for exactly the arm that looked
+    # weakest. 250 leaves every arm room for patience to fire first.
+    epochs=250,
     imgsz=640,
     batch=16,
     patience=30,
@@ -123,6 +131,37 @@ def freeze_depth(model_arg):
     return WARMUP_FREEZE.get(stem, 0)
 
 
+def verify_transfer(model, weights, depth):
+    """
+    Stop if any layer about to be frozen did not actually receive pretrained
+    weights.
+
+    Ultralytics transfers by matching parameter name and shape, and when
+    nothing matches it logs a count and carries on. A renamed layer or a
+    changed width would therefore produce a network whose "pretrained" backbone
+    is random -- and the warm-up would then freeze that random backbone in
+    place for ten epochs. The invariant checked here is the one the warm-up
+    relies on: every tensor in layers 0..depth-1 equals the checkpoint's.
+    """
+    import torch
+
+    if depth <= 0:
+        return
+    src = YOLO(weights).model.state_dict()
+    dst = model.model.state_dict()
+    frozen = [k for k in dst if int(k.split(".")[1]) < depth]
+    bad = [k for k in frozen
+           if k not in src or src[k].shape != dst[k].shape
+           or not torch.equal(src[k].cpu(), dst[k].cpu())]
+    if not frozen or bad:
+        raise SystemExit(
+            f"[!] pretrained transfer from {weights} did not cover the layers "
+            f"warm-up freezes (0-{depth - 1}): {len(bad)} of {len(frozen)} "
+            f"tensors missing or different, e.g. {bad[:3]}")
+    print(f"[+] verified: all {len(frozen)} tensors in layers 0-{depth - 1} "
+          f"came from {weights}")
+
+
 def resolve_weights(model_arg, override):
     if override:
         return override
@@ -174,19 +213,30 @@ def main():
         print(f"[!] {data} not found. Run 04_build_dataset.py --pool {args.pool} first.")
         return
 
-    run_name = f"pool{args.pool}"
-    if args.tag:
-        run_name = f"{run_name}_{args.tag}"
-    elif args.seed != 0:
-        run_name = f"{run_name}_s{args.seed}"
+    name = run_name(args.pool, args.tag, args.seed)
+    detect_dir = ROOT / "runs" / "detect"
+    warm_name = f"{name}_warmup"
 
-    out_dir = ROOT / "runs" / "detect" / run_name
+    # Refuse rather than overwrite or rename. Ultralytics does not fail when a
+    # run directory already exists: it quietly trains into "<name>-2", while
+    # every script downstream still reads "<name>". That produced a run whose
+    # summary and threshold came from one training and whose weights came from
+    # another. Starting again means moving the old directories out first.
+    if not args.resume:
+        clash = [d for d in (detect_dir / name, detect_dir / warm_name) if d.exists()]
+        if clash:
+            print("[!] refusing to start: already exists")
+            for d in clash:
+                print(f"      {d.relative_to(ROOT).as_posix()}")
+            print("    move or delete it to retrain, or pass --resume to continue it.")
+            return
+
     # Built unconditionally: the summary below reports batch/imgsz regardless
     # of which branch trained, and a resumed run never rebuilds this dict.
     cfg = dict(TRAIN_CFG, epochs=args.epochs, seed=args.seed, workers=args.workers)
 
     if args.resume:
-        last = out_dir / "weights" / "last.pt"
+        last = detect_dir / name / "weights" / "last.pt"
         if not last.exists():
             print(f"[!] no checkpoint to resume: {last}")
             return
@@ -203,13 +253,14 @@ def main():
     else:
         model = YOLO(args.model)
         weights = resolve_weights(args.model, args.weights)
+        depth = freeze_depth(args.model)
         if weights:
             print(f"[+] transferring matching layers from {weights}")
             model.load(weights)
+            verify_transfer(model, weights, depth)
 
         t0 = time.time()
 
-        depth = freeze_depth(args.model)
         if args.warmup_epochs > 0 and depth > 0:
             # Phase one. The new layers start from random values and sit against
             # a converged backbone; letting them move while everything else is
@@ -217,17 +268,24 @@ def main():
             # weights that were already right.
             print(f"[+] warm-up: {args.warmup_epochs} epochs with layers "
                   f"0-{depth - 1} frozen")
-            warm_name = f"{run_name}_warmup"
             model.train(data=str(data), name=warm_name,
                         **dict(cfg, epochs=args.warmup_epochs, freeze=depth))
-            warmed = ROOT / "runs" / "detect" / warm_name / "weights" / "last.pt"
+            # Where Ultralytics actually wrote it, not where it was asked to.
+            warmed = Path(model.trainer.save_dir) / "weights" / "last.pt"
             # last.pt, not best.pt: warm-up is initialisation, not model
             # selection, and the best epoch of a frozen run is not meaningful.
             model = YOLO(str(warmed))
-            print(f"[+] warm-up complete, continuing from {warmed.name}")
+            print(f"[+] warm-up complete, continuing from {warmed}")
 
-        model.train(data=str(data), name=run_name, **cfg)
+        model.train(data=str(data), name=name, **cfg)
         train_seconds = time.time() - t0
+
+    # Every output below goes where training actually wrote, read back from the
+    # trainer, so the summary can never land beside a different run's weights.
+    out_dir = Path(model.trainer.save_dir)
+    if out_dir != detect_dir / name:
+        print(f"[!] trained into {out_dir.name}, expected {name}; "
+              "downstream scripts will not find it")
 
     print("\n--- validation on the SYNTHETIC split ---")
     metrics = model.val()
@@ -268,7 +326,7 @@ def main():
         print(f"  {k:<16} {v}")
     print(f"\nWeights: {best}")
     tag = f" --tag {args.tag}" if args.tag else ""
-    print(f"Then run:  python 06_evaluate.py --pool {args.pool}{tag}")
+    print(f"Then run:  python src/06_evaluate.py --pool {args.pool}{tag}")
 
 
 if __name__ == "__main__":
