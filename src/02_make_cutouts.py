@@ -76,6 +76,12 @@ def main():
     for manifest, kind in JOBS:
         out_dir = OUT / kind
         out_dir.mkdir(parents=True, exist_ok=True)
+        # Clear the previous run's cut-outs first. They are numbered by
+        # manifest position, so when the manifest shrank, the old tail
+        # survived beside the new files, was absent from the extraction log,
+        # and was screened into the pool as if it were current.
+        for old in out_dir.glob("*.png"):
+            old.unlink()
         rows = read_manifest(manifest)
         print(f"[{kind}] {len(rows)} images from {manifest}.csv")
 
