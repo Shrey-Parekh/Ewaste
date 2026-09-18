@@ -18,7 +18,7 @@ WHAT IT STILL CANNOT MEASURE
     The true-positive rate on real *contaminated* organic waste -- e-waste
     actually buried in real wet organics. No such imagery exists publicly.
 
-Run:   python 06_evaluate.py --pool 59
+Run:   python 06_evaluate.py --pool 54
 Output: eval_pool<N>/
 """
 

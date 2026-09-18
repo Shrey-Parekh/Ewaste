@@ -62,6 +62,8 @@ import hashlib
 import json
 import random
 
+from pipeline_common import perceptual_hash, same_image
+
 # ------------------------- CONFIG -------------------------
 # This file lives in src/; the data it reads and writes lives beside src/, not
 # inside it. SRC is used for loading sibling modules by path, ROOT for anything
@@ -246,25 +248,33 @@ def main():
     counts = {}
     ewaste_test = stratified_take(ewaste, N_EWASTE_TEST, rng)
 
-    # The name-based exclusion above misses a photograph that was copied out of
-    # TrashBox and renamed; one curated photograph is byte-identical to a test
-    # photograph under a different name. Compare content. A clash is resolved
-    # by dropping the curated copy, not the test one: removing a test candidate
-    # would change the seeded draw and so every evaluation split, whereas the
-    # pool is never drawn with the RNG and can lose a member without disturbing
-    # anything else. The curated directory also holds one photograph twice
-    # under two names; only the first is kept.
-    test_hashes = {content_hash(p) for _, p in ewaste_test}
-    seen, pool = set(), []
+    # The name-based exclusion above misses a photograph copied out of
+    # TrashBox and renamed, and a byte comparison misses one that was also
+    # re-saved. Four curated photographs were one or the other: copies of test
+    # photographs under different names, three of them re-encoded. Compare by
+    # perceptual hash, which recognises the same picture whatever its bytes.
+    #
+    # A clash is resolved by dropping the curated copy, not the test one:
+    # removing a test candidate would change the seeded draw and so every
+    # evaluation split, whereas the pool is never drawn with the RNG and can
+    # lose a member without disturbing anything else. The curated directory
+    # also holds three pictures twice under different names; only the first
+    # of each is kept.
+    test_ph = [perceptual_hash(p) for _, p in ewaste_test]
+    kept_ph, pool = [], []
     for p in curated:
-        h = content_hash(p)
-        if h in test_hashes:
-            print(f"  dropped from pool, same image as a test photograph: {p.name}")
+        h = perceptual_hash(p)
+        match = next((t for (_, t), th in zip(ewaste_test, test_ph)
+                      if same_image(h, th)), None)
+        if match is not None:
+            print(f"  dropped from pool, same image as test photograph "
+                  f"{match.name}: {p.name}")
             continue
-        if h in seen:
-            print(f"  dropped from pool, duplicate of another curated photograph: {p.name}")
+        twin = next((q for q, qh in zip(pool, kept_ph) if same_image(h, qh)), None)
+        if twin is not None:
+            print(f"  dropped from pool, same image as curated {twin.name}: {p.name}")
             continue
-        seen.add(h)
+        kept_ph.append(h)
         pool.append(p)
 
     counts["ewaste_pool"] = write_manifest(
@@ -309,7 +319,9 @@ def main():
         "organic_categories": ORGANIC_CATEGORIES,
         "organic_curated": False,
         "pairwise_disjoint": clashes == 0,
-        "disjointness_checked_by": "content hash",
+        "disjointness_checked_by": "content hash across all roles; the pool "
+                                   "also by perceptual hash against the test "
+                                   "set and itself",
     }
     (OUT / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"\nSTEP 0 complete -> {OUT}")

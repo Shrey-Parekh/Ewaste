@@ -15,7 +15,7 @@ Three sheets:
     Charts    detection at matched false alarms, and against throughput
     Notes     what is measured, and why only some columns are ranked
 
-Run:    python src/13_excel.py --pool 59
+Run:    python src/13_excel.py --pool 54
 Output: Manuscripts/tables/results_pool60.xlsx
 """
 

@@ -34,7 +34,7 @@ The columns are ordered by how much weight they can bear.
 Precision and F1 depend on the 400:747 ratio of positives to negatives in the
 test split, an artefact of how it was drawn rather than a real prevalence.
 
-Run:    python src/11_metrics_table.py --pool 59
+Run:    python src/11_metrics_table.py --pool 54
 Output: printed table, plus Manuscripts/tables/metrics_table.{csv,tex}
 """
 

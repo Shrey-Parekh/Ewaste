@@ -16,8 +16,8 @@ batch size, augmentation or seed, a difference between them would no longer be
 attributable to the architecture, which is the entire claim the comparison
 makes.
 
-Run:   python 05_train.py --pool 59 --model yolov8s.pt
-       python 05_train.py --pool 59 --model models/yolov8s-cbam.yaml --tag v8s_cbam
+Run:   python 05_train.py --pool 54 --model yolov8s.pt
+       python 05_train.py --pool 54 --model models/yolov8s-cbam.yaml --tag v8s_cbam
 Output: runs/detect/pool<N>[_<tag>]/  (+ synthetic_summary.json)
 """
 

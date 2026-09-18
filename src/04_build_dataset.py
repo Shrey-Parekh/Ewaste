@@ -24,14 +24,14 @@ What it changes relative to running lib_composite.py directly:
     assignment is written to splits/synthetic_pool<N>.csv so it can be
     audited.
 
-    Validation holds about a fifth of each: 12 of 59 objects. That is enough
+    Validation holds about a fifth of each: 10 of 54 objects. That is enough
     to choose an epoch, where the decision is coarse and mAP averages over
-    hundreds of boxes, but not to choose a deployment threshold: twelve
+    hundreds of boxes, but not to choose a deployment threshold: ten
     identities are too few to say how the model treats an unseen one. The
     threshold question is answered on real photographs instead, by comparing
     arms at matched false-alarm rates.
 
-Run:   python src/04_build_dataset.py --pool 59
+Run:   python src/04_build_dataset.py --pool 54
        python src/04_build_dataset.py --pool 25
 Output: dataset_pool<N>/
 """

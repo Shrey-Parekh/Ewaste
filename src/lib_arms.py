@@ -18,11 +18,12 @@ backbone with both necks, then the BiFPN variant of YOLO11s.
 """
 
 # Number of e-waste objects the synthetic data is built from, which also
-# names every run and evaluation directory. It is what survives screening:
-# 66 curated photographs, less 7 rejected for a person, a collage or a matting
-# failure. Every script's --pool defaults to this, so a command typed without
-# the flag reaches the runs that exist rather than a pool size that does not.
-DEFAULT_POOL = 59
+# names every run and evaluation directory: 68 curated photographs, less 7
+# that are the same picture as another -- 4 copies of test photographs, 3
+# pictures held twice -- less 7 rejected by screening for a person, a collage
+# or a matting failure. Every script's --pool defaults to this, so a command
+# typed without the flag reaches the runs that exist.
+DEFAULT_POOL = 54
 
 ARMS = [
     ("YOLOv8s", "yolov8s.pt", ""),

@@ -23,9 +23,9 @@ Run in order. Every step is seeded, so the whole thing is reproducible.
 | 1 | `src/01_build_splits.py` | `splits/*.csv` — partitions both collections into disjoint roles |
 | 2 | `src/02_make_cutouts.py` | `cutouts/` — alpha-matted objects, plus `extraction_log.csv` |
 | 3 | `src/03_screen_cutouts.py` | `cutouts/ewaste_clean/` — rejects matting failures and collages |
-| 4 | `src/04_build_dataset.py --pool 59` | `dataset_pool59/` — 1500 composited images with occlusion-aware labels |
-| 5 | `src/05_train.py --pool 59` | `runs/detect/pool59[_tag]/` |
-| 6 | `src/06_evaluate.py --pool 59` | `eval_pool59[_tag]/` — sweep over the withheld real sets |
+| 4 | `src/04_build_dataset.py --pool 54` | `dataset_pool54/` — 1500 composited images with occlusion-aware labels |
+| 5 | `src/05_train.py --pool 54` | `runs/detect/pool54[_tag]/` |
+| 6 | `src/06_evaluate.py --pool 54` | `eval_pool54[_tag]/` — sweep over the withheld real sets |
 | 7 | `src/07_make_figures.py` | `Manuscripts/figures/` |
 
 `src/08_verify_integrity.py` audits the whole thing and can be run at any time. It
@@ -98,14 +98,14 @@ exist to compare fusion topology, which only works while everything else about
 them matches.
 
 ```bash
-python src/05_train.py    --pool 59 --model yolov8s.pt
-python src/06_evaluate.py --pool 59
+python src/05_train.py    --pool 54 --model yolov8s.pt
+python src/06_evaluate.py --pool 54
 
-python src/05_train.py    --pool 59 --model yolo11s.pt --tag yolo11s
-python src/06_evaluate.py --pool 59 --tag yolo11s
+python src/05_train.py    --pool 54 --model yolo11s.pt --tag yolo11s
+python src/06_evaluate.py --pool 54 --tag yolo11s
 
-python src/05_train.py    --pool 59 --model models/yolov8s-cbam.yaml --tag v8s_cbam
-python src/06_evaluate.py --pool 59 --tag v8s_cbam
+python src/05_train.py    --pool 54 --model models/yolov8s-cbam.yaml --tag v8s_cbam
+python src/06_evaluate.py --pool 54 --tag v8s_cbam
 ```
 
 ...and so on for the remaining configurations in `models/`. Three backbones -- ResNet18, GoogLeNet and EfficientNet-B0 -- are each paired with both necks. See

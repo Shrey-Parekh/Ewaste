@@ -3,8 +3,9 @@ pipeline_common.py
 ------------------
 Helpers shared by every trainer in the pipeline.
 
-It also holds the defensive image decoder, which the evaluator and the
-annotator both need because they read the same photograph corpus.
+It also holds the defensive image decoder, which the evaluator needs, and the
+perceptual hash the split builder and integrity check use to recognise the
+same photograph saved twice.
 
 The trainer helpers live here rather than in 05_train.py so that anything
 needing the operating point can import them without pulling in Ultralytics and
@@ -35,6 +36,39 @@ def load_image(path):
     except Exception:
         pass
     return im.convert("RGB")
+
+
+# Two photographs whose hashes differ in at most this many of 256 bits are the
+# same image. Measured on this corpus: re-saved copies of one photograph sit
+# at 0-2 bits, and the closest pair of genuinely different photographs at 34.
+NEAR_DUPLICATE_BITS = 10
+
+
+def perceptual_hash(path, size=16):
+    """
+    Difference hash of a photograph: each bit says whether a pixel is brighter
+    than its right-hand neighbour on a size x size greyscale thumbnail.
+
+    A byte hash only recognises an identical file. The same photograph re-saved
+    at another JPEG quality has different bytes but the same hash here, and
+    three curated training photographs were exactly that: re-encoded copies of
+    test photographs, invisible to the byte comparison. Orientation is fixed
+    first, so a copy with its rotation baked into the pixels still matches one
+    that carries it as EXIF.
+    """
+    grey = load_image(path).convert("L").resize((size + 1, size), Image.LANCZOS)
+    px = grey.tobytes()
+    bits = 0
+    for r in range(size):
+        row = px[r * (size + 1):(r + 1) * (size + 1)]
+        for c in range(size):
+            bits = (bits << 1) | (row[c] > row[c + 1])
+    return bits
+
+
+def same_image(a, b):
+    """Whether two perceptual hashes belong to the same photograph."""
+    return (a ^ b).bit_count() <= NEAR_DUPLICATE_BITS
 
 
 def f1_curve(metrics):

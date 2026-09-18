@@ -26,7 +26,7 @@ as much as the network.
 Two independent sittings agreed at Spearman 0.973 on the ordering while
 differing about 5% in level: the ranking is the reproducible part.
 
-Run:    python src/14_latency.py --pool 59
+Run:    python src/14_latency.py --pool 54
 Output: latency_pool60.json, read by 11_metrics_table.py
 """
 

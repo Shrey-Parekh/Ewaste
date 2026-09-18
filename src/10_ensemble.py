@@ -21,7 +21,7 @@ fraction of models that contributed to it, so ensemble confidences do not live
 on the same scale as a single model's. The operating point is therefore not
 comparable across the two; the detection and false-alarm rates it produces are.
 
-Run:   python 10_ensemble.py --pool 59
+Run:   python 10_ensemble.py --pool 54
 Output: eval_pool<N>_ensemble/
 """
 
