@@ -26,12 +26,11 @@ import subprocess
 import sys
 import threading
 
-from lib_arms import ARMS, eval_dir_name, run_name
+from lib_arms import ARMS, DEFAULT_POOL, eval_dir_name, run_name
 
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
 
-POOL_DEFAULT = 60
 VERDIGRIS = "#1F3B33"
 INK = "#2B3A34"
 GREY = "#8B978F"
@@ -68,7 +67,7 @@ class Launcher:
                  font=("Segoe UI", 15, "bold")).pack(side="left")
         tk.Label(head, text="pool", bg=BG, fg=GREY,
                  font=("Segoe UI", 9)).pack(side="left", padx=(18, 4))
-        self.pool = tk.StringVar(value=str(POOL_DEFAULT))
+        self.pool = tk.StringVar(value=str(DEFAULT_POOL))
         tk.Entry(head, textvariable=self.pool, width=6,
                  font=("Consolas", 10)).pack(side="left")
         tk.Button(head, text="Refresh status", command=self.refresh,
@@ -128,7 +127,7 @@ class Launcher:
         try:
             return int(self.pool.get())
         except ValueError:
-            return POOL_DEFAULT
+            return DEFAULT_POOL
 
     def refresh(self):
         for row in self.tree.get_children():

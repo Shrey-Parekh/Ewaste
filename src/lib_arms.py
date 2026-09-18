@@ -17,6 +17,13 @@ Order is the order results are presented in: baselines, attention, then each
 backbone with both necks, then the BiFPN variant of YOLO11s.
 """
 
+# Number of e-waste objects the synthetic data is built from, which also
+# names every run and evaluation directory. It is what survives screening:
+# 66 curated photographs, less 7 rejected for a person, a collage or a matting
+# failure. Every script's --pool defaults to this, so a command typed without
+# the flag reaches the runs that exist rather than a pool size that does not.
+DEFAULT_POOL = 59
+
 ARMS = [
     ("YOLOv8s", "yolov8s.pt", ""),
     ("YOLOv11s", "yolo11s.pt", "yolo11s"),

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
-from lib_arms import eval_dir_name
+from lib_arms import DEFAULT_POOL, eval_dir_name
 
 # This file lives in src/; the data it reads and writes lives beside src/, not
 # inside it. SRC is used for loading sibling modules by path, ROOT for anything
@@ -152,7 +152,7 @@ def visible_fraction(pool, threshold=0.35):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=200)
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL)
     args = ap.parse_args()
 
     FIGDIR.mkdir(parents=True, exist_ok=True)

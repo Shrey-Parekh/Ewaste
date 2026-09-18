@@ -23,7 +23,7 @@ whole raw collections, not the disjoint train/test split manifests -- that is
 the same train/test leak lib_segment.py's direct execution would cause.
 Use the pipeline entry point instead:
 
-Run:   python 04_build_dataset.py --pool 200
+Run:   python src/04_build_dataset.py
 """
 
 from pathlib import Path
@@ -528,12 +528,12 @@ def main():
               f"{(arr >= MIN_VISIBLE_FRAC).mean():.1%}")
     print(f"  LOOK AT dataset/preview/ NOW. If the objects look obviously pasted,")
     print(f"  raise HARMONIZE_STRENGTH or lower MAX_FRAC, then rerun.")
-    print("Then run:  python 05_train.py --pool 200")
+    print("Then run:  python src/05_train.py")
 
 
 if __name__ == "__main__":
     print("[!] This composites from the WHOLE raw/organic collection and the")
     print("    default cutouts/ directory, ignoring the train/test split")
     print("    manifests -- that is a leak. Use the pipeline entry point instead:")
-    print("    python 04_build_dataset.py --pool 200")
+    print("    python src/04_build_dataset.py")
     raise SystemExit(1)

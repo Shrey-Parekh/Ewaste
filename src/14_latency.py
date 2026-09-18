@@ -26,7 +26,7 @@ as much as the network.
 Two independent sittings agreed at Spearman 0.973 on the ordering while
 differing about 5% in level: the ranking is the reproducible part.
 
-Run:    python src/14_latency.py --pool 60
+Run:    python src/14_latency.py --pool 59
 Output: latency_pool60.json, read by 11_metrics_table.py
 """
 
@@ -40,7 +40,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import lib_modules  # noqa: F401  registers CBAM/BiFPNFuse/TVBackbone
-from lib_arms import ARMS, run_name
+from lib_arms import ARMS, DEFAULT_POOL, run_name
 from lib_metrics import LATENCY_CONF, measure_latency
 
 SRC = Path(__file__).resolve().parent
@@ -76,7 +76,7 @@ def load_images(limit):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=60)
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL)
     ap.add_argument("--rounds", type=int, default=ROUNDS)
     ap.add_argument("--sample", type=int, default=SAMPLE)
     args = ap.parse_args()

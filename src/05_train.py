@@ -16,8 +16,8 @@ batch size, augmentation or seed, a difference between them would no longer be
 attributable to the architecture, which is the entire claim the comparison
 makes.
 
-Run:   python 05_train.py --pool 60 --model yolov8s.pt
-       python 05_train.py --pool 60 --model models/yolov8s-cbam.yaml --tag v8s_cbam
+Run:   python 05_train.py --pool 59 --model yolov8s.pt
+       python 05_train.py --pool 59 --model models/yolov8s-cbam.yaml --tag v8s_cbam
 Output: runs/detect/pool<N>[_<tag>]/  (+ synthetic_summary.json)
 """
 
@@ -30,7 +30,7 @@ from ultralytics import YOLO
 
 import lib_modules  # noqa: F401  binds CBAM and BiFPNFuse for the YAML parser
 from lib_metrics import count_gflops, count_parameters, weight_size_mb
-from lib_arms import run_name
+from lib_arms import DEFAULT_POOL, run_name
 from pipeline_common import best_f1_point, write_f1_curve
 
 # This file lives in src/; the data it reads and writes lives beside src/, not
@@ -176,7 +176,7 @@ def resolve_weights(model_arg, override):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=60)
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL)
     ap.add_argument("--epochs", type=int, default=TRAIN_CFG["epochs"])
     ap.add_argument("--model", type=str, default="yolov8s.pt",
                     help="a checkpoint (yolov8s.pt) or an architecture from "

@@ -15,7 +15,7 @@ Three sheets:
     Charts    detection at matched false alarms, and against throughput
     Notes     what is measured, and why only some columns are ranked
 
-Run:    python src/13_excel.py --pool 60
+Run:    python src/13_excel.py --pool 59
 Output: Manuscripts/tables/results_pool60.xlsx
 """
 
@@ -30,6 +30,9 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 SRC = Path(__file__).resolve().parent
+sys.path.insert(0, str(SRC))
+from lib_arms import DEFAULT_POOL  # noqa: E402
+
 ROOT = SRC.parent
 OUT = ROOT / "Manuscripts" / "tables"
 
@@ -270,7 +273,7 @@ def write_notes(wb):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=60)
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL)
     args = ap.parse_args()
 
     mt = load_table_module()

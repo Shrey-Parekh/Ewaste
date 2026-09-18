@@ -21,7 +21,7 @@ fraction of models that contributed to it, so ensemble confidences do not live
 on the same scale as a single model's. The operating point is therefore not
 comparable across the two; the detection and false-alarm rates it produces are.
 
-Run:   python 10_ensemble.py --pool 60
+Run:   python 10_ensemble.py --pool 59
 Output: eval_pool<N>_ensemble/
 """
 
@@ -53,7 +53,8 @@ ROOT = SRC.parent
 
 # (label, run-directory suffix), from the one list every script shares. The
 # empty suffix is the plain YOLOv8s run.
-from lib_arms import MEMBERS, eval_dir_name, run_name  # noqa: E402
+from lib_arms import (DEFAULT_POOL, MEMBERS, eval_dir_name,  # noqa: E402
+                      run_name)
 
 IOU_THR = 0.55          # cluster membership, the WBF paper's default
 LATENCY_WARMUP = 10
@@ -262,7 +263,7 @@ def fuse_detections(per_model_detections, weights):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=60)
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL)
     ap.add_argument("--weighting", choices=("val_f1", "equal"), default="val_f1",
                     help="how much each member counts. val_f1 weights members "
                          "by their held-out synthetic validation F1; equal "

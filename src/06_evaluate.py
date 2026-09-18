@@ -18,7 +18,7 @@ WHAT IT STILL CANNOT MEASURE
     The true-positive rate on real *contaminated* organic waste -- e-waste
     actually buried in real wet organics. No such imagery exists publicly.
 
-Run:   python 06_evaluate.py --pool 200
+Run:   python 06_evaluate.py --pool 59
 Output: eval_pool<N>/
 """
 
@@ -32,7 +32,7 @@ from PIL import Image, ImageDraw
 import lib_modules  # noqa: F401  binds BiFPNFuse so custom checkpoints unpickle
 from lib_metrics import (LATENCY_CONF, count_gflops, count_parameters,
                          measure_latency, weight_size_mb)
-from lib_arms import eval_dir_name, run_name
+from lib_arms import DEFAULT_POOL, eval_dir_name, run_name
 from pipeline_common import load_image
 
 # ------------------------- CONFIG -------------------------
@@ -179,7 +179,7 @@ def save_worst(detections, t, out_dir, k=SAVE_WORST):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=200)
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL)
     ap.add_argument("--tag", type=str, default="",
                     help="run-directory suffix used by the architecture comparison")
     ap.add_argument("--seed", type=int, default=0,

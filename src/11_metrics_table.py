@@ -34,7 +34,7 @@ The columns are ordered by how much weight they can bear.
 Precision and F1 depend on the 400:747 ratio of positives to negatives in the
 test split, an artefact of how it was drawn rather than a real prevalence.
 
-Run:    python src/11_metrics_table.py --pool 60
+Run:    python src/11_metrics_table.py --pool 59
 Output: printed table, plus Manuscripts/tables/metrics_table.{csv,tex}
 """
 
@@ -43,7 +43,7 @@ import argparse
 import csv
 import json
 
-from lib_arms import MEMBERS, eval_dir_name, run_name
+from lib_arms import DEFAULT_POOL, MEMBERS, eval_dir_name, run_name
 
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
@@ -196,7 +196,7 @@ def cell(row, key, fmt):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pool", type=int, default=60)
+    ap.add_argument("--pool", type=int, default=DEFAULT_POOL)
     args = ap.parse_args()
 
     latency = load_latency(args.pool)
