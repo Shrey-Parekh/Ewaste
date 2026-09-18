@@ -207,8 +207,12 @@ def main():
     if DST.exists():
         shutil.rmtree(DST)
     DST.mkdir(parents=True)
-    for i, p in enumerate(selected, 1):
-        shutil.copy2(p, DST / f"ewaste_{i:04d}.png")
+    # Keep the source name. Renumbering the selection as ewaste_0001.. reused
+    # the source naming pattern with a different meaning, so ewaste_0015 in the
+    # pool was not ewaste_0015 in the screening log, and the category needed
+    # to stratify the validation split was lost with the name.
+    for p in selected:
+        shutil.copy2(p, DST / p.name)
 
     with open(CUTOUTS / "screening_log.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -226,7 +230,7 @@ def main():
     if len(kept) < args.keep:
         print(f"  [!] only {len(kept)} survived; pool is smaller than requested")
     print(f"  log             cutouts/screening_log.csv")
-    print("\nThen run:  python 04_build_dataset.py --pool 200")
+    print(f"\nThen run:  python src/04_build_dataset.py --pool {len(selected)}")
 
 
 if __name__ == "__main__":
