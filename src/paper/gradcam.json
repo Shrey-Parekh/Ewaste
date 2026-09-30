@@ -1,0 +1,14 @@
+{
+ "threshold": 0.320626,
+ "n": 210,
+ "box_area_mean": 0.024956415085565474,
+ "top_location_in_box": 0.7523809523809524,
+ "n_top_in_box": 158,
+ "hirescam": {
+  "energy_mean": 0.6721598505973816,
+  "energy_median": 0.8659234642982483,
+  "pointing": 0.7380952380952381,
+  "energy_mean_top_in_box": 0.8818491697311401,
+  "pointing_top_in_box": 0.9746835443037974
+ }
+}

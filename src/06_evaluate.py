@@ -19,7 +19,7 @@ WHAT IT STILL CANNOT MEASURE
     actually buried in real wet organics. No such imagery exists publicly.
 
 Run:   python 06_evaluate.py --pool 54
-Output: eval_pool<N>/
+Output: evaluation/pool<N>[_tag]/
 """
 
 from pathlib import Path

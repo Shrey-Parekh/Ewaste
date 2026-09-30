@@ -86,7 +86,7 @@ dataset_pool*/
 cutouts/
 backgrounds/
 runs/
-eval_pool*/
+evaluation/
 logs/
 
 # ---- source photograph collections ----

@@ -57,8 +57,8 @@ def run_name(pool, tag="", seed=0):
 
 
 def eval_dir_name(pool, tag="", seed=0):
-    """Name of the matching evaluation directory beside runs/."""
-    return "eval_" + run_name(pool, tag, seed)
+    """Path of the matching evaluation directory, relative to the project root."""
+    return "evaluation/" + run_name(pool, tag, seed)
 
 
 if __name__ == "__main__":
@@ -67,6 +67,6 @@ if __name__ == "__main__":
     assert run_name(60, seed=3) == "pool60_s3"
     # the case the old copies got wrong: a tag no longer swallows the seed
     assert run_name(60, "v8s_cbam", 3) == "pool60_v8s_cbam_s3"
-    assert eval_dir_name(60, "ensemble") == "eval_pool60_ensemble"
+    assert eval_dir_name(60, "ensemble") == "evaluation/pool60_ensemble"
     assert len({t for _, _, t in ARMS}) == len(ARMS), "duplicate tag"
     print("lib_arms: ok")

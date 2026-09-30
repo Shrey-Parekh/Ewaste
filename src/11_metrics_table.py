@@ -35,7 +35,7 @@ Precision and F1 depend on the ratio of positives to negatives in the test
 split, an artefact of how it was drawn rather than a real prevalence.
 
 Run:    python src/11_metrics_table.py --pool 54
-Output: printed table, plus Manuscripts/tables/metrics_table.{csv,tex}
+Output: printed table, plus results/metrics_table.{csv,tex}
 """
 
 from bisect import bisect_left
@@ -50,7 +50,7 @@ from lib_arms import DEFAULT_POOL, MEMBERS, eval_dir_name, run_name
 
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent
-OUT = ROOT / "Manuscripts" / "tables"
+OUT = ROOT / "results"
 
 # Order is the order the paper presents them in: every arm from the one shared
 # list, then the ensemble, which is not a trainable arm.

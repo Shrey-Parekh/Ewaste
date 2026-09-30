@@ -16,7 +16,7 @@ Three sheets:
     Notes     what is measured, and why only some columns are ranked
 
 Run:    python src/13_excel.py --pool 54
-Output: Manuscripts/tables/results_pool<N>.xlsx
+Output: results/results_pool<N>.xlsx
 """
 
 from pathlib import Path
@@ -34,7 +34,7 @@ sys.path.insert(0, str(SRC))
 from lib_arms import DEFAULT_POOL  # noqa: E402
 
 ROOT = SRC.parent
-OUT = ROOT / "Manuscripts" / "tables"
+OUT = ROOT / "results"
 
 
 def load_table_module():

@@ -22,7 +22,7 @@ on the same scale as a single model's. The operating point is therefore not
 comparable across the two; the detection and false-alarm rates it produces are.
 
 Run:   python 10_ensemble.py --pool 54
-Output: eval_pool<N>_ensemble/
+Output: evaluation/pool<N>_ensemble/
 """
 
 from pathlib import Path

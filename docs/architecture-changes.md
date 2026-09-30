@@ -368,5 +368,5 @@ python src/05_train.py --pool 54 --model models/resnet18-bifpn-cbam.yaml --tag r
 Budget is 160 epochs per arm (10 warm-up + 150), the same for every arm, with
 no early stopping: the learning-rate decay and the mosaic cut-off are tied to
 the epoch count, so stopping arms at different points would give them
-different schedules. The full command list
-is in `docs/HANDOFF.md`.
+different schedules. The full command list,
+with the tag each arm must use, is in `README.md`.

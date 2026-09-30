@@ -1,7 +1,7 @@
-﻿# Detecting electronic waste contamination in wet biodegradable waste
+﻿# Segmentation and XAI approach for detecting e-waste from wet biodegradable waste
 
-Code for the paper *Detecting electronic waste contamination in wet
-biodegradable waste with synthetically composited training data*.
+Code for the paper *Segmentation and XAI approach for detecting e-waste from
+wet biodegradable waste* (submitted to *Waste Management*).
 
 No public imagery exists of electronic waste actually buried in wet organic
 waste, so the training set is built by compositing e-waste cut-outs into real
@@ -10,9 +10,31 @@ photographs they have never seen.
 
 ## Setup
 
+Tested with Python 3.13 on Windows 11, CUDA 12.8 and one NVIDIA RTX 4060 Ti
+(8 GB). Install the CUDA builds of PyTorch first, then the rest:
+
 ```bash
+pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt
 ```
+
+## Data
+
+The source photographs are not redistributed with this code. Download both
+collections and place them where the split manifests expect them:
+
+| Collection | Licence | Expected location |
+|---|---|---|
+| [RealWaste](https://archive.ics.uci.edu/dataset/908/realwaste) | CC BY 4.0 | `assets/trash/realwaste-main/RealWaste/` |
+| [TrashBox](https://github.com/nikhilvenkatkumsetty/TrashBox) | none stated | `assets/trash/TrashBox/TrashBox_train_dataset_subfolders/` |
+
+The 68 hand-curated training photographs in `raw/ewaste/` were copied out of
+TrashBox; `splits/ewaste_pool.csv` lists them. Every manifest in `splits/`
+records the relative path of each photograph and its role, so the partition
+used in the paper is reproduced exactly once both collections are in place.
+Because TrashBox carries no licence, the cut-outs and synthetic images derived
+from it are not shared either; steps 2 to 4 regenerate them from the
+manifests with the same seeds.
 
 ## Pipeline
 
@@ -25,8 +47,8 @@ Run in order. Every step is seeded, so the whole thing is reproducible.
 | 3 | `src/03_screen_cutouts.py` | `cutouts/ewaste_clean/` — rejects matting failures and collages |
 | 4 | `src/04_build_dataset.py --pool 54` | `dataset_pool54/` — 1500 composited images with occlusion-aware labels |
 | 5 | `src/05_train.py --pool 54` | `runs/detect/pool54[_tag]/` |
-| 6 | `src/06_evaluate.py --pool 54` | `eval_pool54[_tag]/` — sweep over the withheld real sets |
-| 7 | `src/07_make_figures.py` | `Manuscripts/figures/` |
+| 6 | `src/06_evaluate.py --pool 54` | `evaluation/pool54[_tag]/` — sweep over the withheld real sets |
+| 7 | `src/paper/*.py` | figures, table rows and statistics for the paper (see below) |
 
 `src/08_verify_integrity.py` audits the whole thing and can be run at any time. It
 exits non-zero if any training photograph has reached an evaluation set, so it
@@ -41,9 +63,9 @@ Further steps sit outside the numbered run order:
 | Script | Role |
 |---|---|
 | `src/10_ensemble.py` | Fuses the eleven trained detectors with weighted box fusion and scores the result |
-| `src/11_metrics_table.py` | Collects every evaluated model into one table, in CSV and LaTeX |
+| `src/11_metrics_table.py` | Collects every evaluated model into one table, in CSV and LaTeX (`results/`) |
 | `src/12_gui.py` | Launcher: pick models, queue training and evaluation |
-| `src/13_excel.py` | Writes the same table as a formatted workbook with charts |
+| `src/13_excel.py` | Writes the same table as a formatted workbook with charts (`results/`) |
 | `src/14_latency.py` | Times every arm in one interleaved sitting, so latency is comparable |
 
 ## The split discipline
@@ -64,7 +86,9 @@ than the raw directories:
 | `ewaste_test.csv` | 400 | withheld, measures detection rate |
 | `organic_test.csv` | 747 | withheld, measures false alarm rate |
 
-The five are pairwise disjoint. 52 TrashBox photographs are withheld from the
+The five are pairwise disjoint. Repeated pictures inside the test draws, found by
+perceptual hashing, are scored once, which leaves the 387 e-waste and 746
+organic photographs reported in the paper. 52 TrashBox photographs are withheld from the
 test source because they share a basename with a curated pool photograph. If
 you add a step, read a manifest — never `raw/` directly.
 
@@ -108,8 +132,48 @@ python src/05_train.py    --pool 54 --model models/yolov8s-cbam.yaml --tag v8s_c
 python src/06_evaluate.py --pool 54 --tag v8s_cbam
 ```
 
-...and so on for the remaining configurations in `models/`. Three backbones -- ResNet18, GoogLeNet and EfficientNet-B0 -- are each paired with both necks. See
-`docs/HANDOFF.md` for the full command list and the tag each model must use.
+...and so on for the remaining configurations in `models/`. Three backbones,
+ResNet18, GoogLeNet and EfficientNet-B0, are each paired with both necks. Each
+configuration must use this tag, because the evaluation and paper scripts find
+runs by it:
+
+| Model config | `--tag` |
+|---|---|
+| `yolov8s.pt` | *(none)* |
+| `yolo11s.pt` | `yolo11s` |
+| `models/yolov8s-cbam.yaml` | `v8s_cbam` |
+| `models/yolo11s-cbam.yaml` | `v11s_cbam` |
+| `models/yolo11s-bifpn-cbam.yaml` | `v11s_bifpn_cbam` |
+| `models/resnet18-fpn-cbam.yaml` | `r18_fpn_cbam` |
+| `models/resnet18-bifpn-cbam.yaml` | `r18_bifpn_cbam` |
+| `models/googlenet-fpn-cbam.yaml` | `gnet_fpn_cbam` |
+| `models/googlenet-bifpn-cbam.yaml` | `gnet_bifpn_cbam` |
+| `models/efficientnet-fpn-cbam.yaml` | `effnet_fpn_cbam` |
+| `models/efficientnet-bifpn-cbam.yaml` | `effnet_bifpn_cbam` |
+
+Then fuse the eleven and time them:
+
+```bash
+python src/10_ensemble.py --pool 54
+python src/14_latency.py  --pool 54
+```
+
+## Paper figures and tables
+
+`src/paper/` turns the evaluation outputs into everything the manuscript
+shows. Run from the project root, in this order:
+
+```bash
+python src/paper/paper_figures.py       # statistics, figures, table rows; writes stats.json
+python src/paper/threshold_split.py     # split-conformal calibration; writes threshold_split.json
+python src/paper/composition_stages.py  # the stage-by-stage compositing figure
+python src/paper/best_model.py          # example detections of YOLOv11s
+python src/paper/gradcam.py             # HiResCAM maps and localisation check (GPU)
+```
+
+Figures go to `Manuscripts/latex/figures/` and table rows to
+`Manuscripts/latex/tables/`; the JSON files next to the scripts hold the
+numbers quoted in the text.
 
 One caveat belongs in any write-up of these numbers: across seeds with
 everything else fixed, detection rate has spanned roughly four points, so
@@ -118,17 +182,22 @@ differences smaller than that should not be ranked.
 ## Layout
 
 ```
-src/            every Python file: the numbered pipeline steps and the libraries
+src/            the numbered pipeline steps and the libraries
+src/paper/      statistics, figures and table rows for the manuscript
 models/         architecture configurations, generated by src/generate_necks.py
-splits/         role manifests -- the source of truth for what may be used where
-raw/ewaste/     the hand-curated e-waste photographs the object pool is drawn from
+splits/         role manifests, the source of truth for what may be used where
+docs/           design notes and the full implementation report
+results/        summary tables across all models (CSV, LaTeX, Excel)
+latency_pool54.json  interleaved latency measurements
+
+raw/            source photographs (not redistributed)
+assets/         TrashBox and RealWaste downloads (not redistributed)
 cutouts/        extracted objects and occluders
 backgrounds/    the 50 background photographs, materialised from the manifest
-dataset_pool*/  generated training sets
+dataset_pool54/ generated training set
 runs/detect/    trained detectors
-eval_pool*/     evaluation results
-logs/           build logs
-docs/           design records, the handoff, and archived superseded results
+evaluation/     evaluation results, one folder per detector
+Manuscripts/    LaTeX source (latex/) and compiled PDFs (pdf/); not tracked
 ```
 
 Generated directories are gitignored: they are reproducible from `splits/` and
