@@ -1,7 +1,6 @@
-﻿# Segmentation and XAI approach for detecting e-waste from wet biodegradable waste
+﻿# Detection of Electronic Waste Contamination in Wet Biodegradable Waste Using Segmentation and Explainable AI
 
-Code for the paper *Segmentation and XAI approach for detecting e-waste from
-wet biodegradable waste* (submitted to *Waste Management*).
+Code for the paper *Detection of Electronic Waste Contamination in Wet Biodegradable Waste Using Segmentation and Explainable AI* (submitted to *Waste Management*).
 
 No public imagery exists of electronic waste actually buried in wet organic
 waste, so the training set is built by compositing e-waste cut-outs into real
